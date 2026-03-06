@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, date, time, timedelta
 from fastapi import FastAPI, HTTPException
 import uvicorn, textwrap, pprint
+from order_and_payment import MembershipPlan, TrainerTier, LockerType, AbstractOrder, OrderItem, Order, OrderRefund, PaymentGateway
+# from order_and_payment import *
 
 class Booking:
     def __init__(self, status = "Pending"):
@@ -19,19 +21,24 @@ class Booking:
 
 class TrainingBooking(Booking):
 
-    def __init__(self, member, schedule, status="Pending"):
+    def __init__(self, member, session, status="Pending"):
         super().__init__()
         self.__member = member
-        self.__schedule = schedule
+        self.__session = session
         self.__training_log = ""
+        self.__locker_booking = None
 
     @property
     def member(self):
         return self.__member
     
     @property
-    def schedule(self):
-        return self.__schedule
+    def session(self):
+        return self.__session
+    
+    @property
+    def locker_booking(self):
+        return self.__locker_booking
 
     @property
     def info(self):
@@ -40,44 +47,57 @@ class TrainingBooking(Booking):
         else:
             status_text = self.status
         return {
-            "schedule id" : self.__schedule.schedule_id,
-            "Class date": self.__schedule.date,
+            "session id" : self.__session.session_id,
+            "Class date": self.__session.date,
             "Status": status_text
         }
     
     @property
     def notification(self):
-        if self.__schedule.status == "Cancelled":
-            return f"[schedule id: {self.__schedule.schedule_id}] Has been cancelled"
+        if self.__session.status == "Cancelled":
+            return f"[session id: {self.__session.session_id}] Has been cancelled"
         elif self.__status == "Pending":
             return "Pending. Please Pay to Confirm Booking"
         elif self.__status == "Waitlist":
-            queue_count = self.__schedule.get_queue_count(self)
+            queue_count = self.__session.get_queue_count(self)
             if queue_count == 0:
-                return f"[schedule id: {self.__schedule.schedule_id}] Currently the next booking in line\n"
+                return f"[session id: {self.__session.session_id}] Currently the next booking in line\n"
             else:
-                return f"[schedule id: {self.__schedule.schedule_id}] There's currently {queue_count} queue before this\n"
+                return f"[session id: {self.__session.session_id}] There's currently {queue_count} queue before this\n"
         else:
             return ""
+        
+    @property
+    def price(self):
+        membership_type = self.__member.current_membership
+        membership_enum = MembershipPlan[membership_type.upper()]
+        trainer_tier = self.__session.trainer.tier
+        tier_enum = TrainerTier[trainer_tier.upper()]
+        session_type = self.__session.get_session_type()
+
+        price = tier_enum.class_price if session_type == "Class" else tier_enum.private_price
+        discount = membership_enum.booking_discount
+        discount_price = round(price * (1 - discount), 2)
+        return discount_price
+        
 
     def __str__(self):
-        # if self.__status == "Pending":
-        #     status_text = "Pending. Please Pay to Confirm Booking"
-        # else:
-        #     status_text = self.__status
-        # text = f"Booking id: {self.__booking_id}\nschedule id: {self.__schedule_id}\nCitizen id: {self.__citizen_id}\nClass date: {self.__class_date}\nStatus: {status_text}"
-        # return text
-        pass
+        if self.__status == "Pending":
+            status_text = "Pending. Please Pay to Confirm Booking"
+        else:
+            status_text = self.__status
+        text = f"session id: {self.__session.session_id} Citizen id: {self.__member.citizen_id} Class date: {self.__session.date} Status: {status_text}"
+        return text
 
-class Schedule:
+class Session:
 
     def __init__(self, start, end, date, max_participants, room, trainer, gym_class = None):
         if gym_class:
-            schedule_len = len(gym_class.schedule_list)
-            self.__schedule_id = f"{gym_class.class_id}-{schedule_len+1:03d}"
+            session_len = len(gym_class.session_list)
+            self.__session_id = f"{gym_class.class_id}-{session_len+1:03d}"
         else:
-            schedule_len = len(trainer.schedule_list)
-            self.__schedule_id = f"{trainer.staff_id}-{schedule_len+1:03d}"
+            session_len = len(trainer.session_list)
+            self.__session_id = f"{trainer.staff_id}-{session_len+1:03d}"
         self.__start = start
         self.__end = end
         self.__date = date
@@ -99,8 +119,8 @@ class Schedule:
         return datetime.combine(self.__date, self.__end)
 
     @property
-    def schedule_id(self):
-        return self.__schedule_id
+    def session_id(self):
+        return self.__session_id
     
     @property
     def date(self):
@@ -121,7 +141,7 @@ class Schedule:
     @property
     def info(self):
         return {
-            "schedule id": self.schedule_id,
+            "session id": self.session_id,
             "datetime": f"Start: {self.__start} End: {self.__end} Date: {self.__date}",
             "enrolled": self.get_enrolled_num(),
             "max participants": self.__max_participants
@@ -145,7 +165,7 @@ class Schedule:
                 participants += 1
         return participants
     
-    def get_schedule_type(self):
+    def get_session_type(self):
         return "Class" if self.__gym_class else "Private"
 
     def enroll_member(self, member):
@@ -159,10 +179,7 @@ class Schedule:
 
         self.__training_booking_list.append(booking)
         member.add_booking(booking)
-
-        # TODO: booking schedule comes with a free, normal locker
-        # but probably should be added when the member "Confirmes" by paying, NOT here right away
-
+        
         return booking
     
     def is_available(self, new_start, new_end, new_date):
@@ -172,7 +189,7 @@ class Schedule:
         return self.end <= new_start or self.start >= new_end
     
     def __str__(self):
-        text = f"[{self.__schedule_id}]\n"
+        text = f"[{self.__session_id}]\n"
         text += f"Start: {self.__start} End: {self.__end} Date: {self.__date}\n"
         text += f"With: {self.__trainer.name} At: {self.__room.name} [{self.__room.room_id}]\n"
         if self.__training_plan:
@@ -180,27 +197,27 @@ class Schedule:
         text += f"Enrolled: {self.get_enrolled_num()} Max: {self.__max_participants}"
         return text
     
-class ScheduleManager:
+class SessionManager:
     def __init__(self):
-        self.__schedule_list = []
+        self.__session_list = []
 
     @property
-    def schedule_list(self):
-        return self.__schedule_list
+    def session_list(self):
+        return self.__session_list
     
-    def create_schedule(self, start, end, date, max_participants, room, trainer = None, gym_class = None):
+    def create_session(self, start, end, date, max_participants, room, trainer = None, gym_class = None):
         if not room.is_available(start, end, date):
-            raise Exception("Schedule is overlapping another previous schedule")
+            raise Exception("Session is overlapping another previous session")
         if not trainer and not isinstance(self, Trainer):
             raise Exception("Trainer not provided")
         if not trainer: trainer = self
         if max_participants > room.max_people:
             raise Exception(f"Room can only accommodate {room.max_people} people")
-        schedule = Schedule(start, end, date, max_participants, room, trainer, gym_class)
-        self.__schedule_list.append(schedule)
-        return schedule
+        session = Session(start, end, date, max_participants, room, trainer, gym_class)
+        self.__session_list.append(session)
+        return session
     
-    def create_repeating_schedule(self, start, end, start_date, days_interval, times, max_participants, room, trainer = None, gym_class = None):
+    def create_repeating_session(self, start, end, start_date, days_interval, times, max_participants, room, trainer = None, gym_class = None):
         if not trainer and not isinstance(self, Trainer):
             raise Exception("Trainer not provided")
         if not trainer: trainer = self
@@ -209,21 +226,21 @@ class ScheduleManager:
         for time in range(times):
             date = start_date + timedelta(days=days_interval*time)
             if not room.is_available(start, end, date):
-                raise Exception("Schedule is overlapping another previous schedule")
+                raise Exception("Session is overlapping another previous session")
             
-            schedule = Schedule(start, end, date, max_participants, room, trainer, gym_class)
-            self.__schedule_list.append(schedule)
+            session = Session(start, end, date, max_participants, room, trainer, gym_class)
+            self.__session_list.append(session)
 
-    def view_schedule(self):
+    def view_session(self):
         pass
 
-    def get_schedule_by_id(self, schedule_id):
-        for schedule in self.__schedule_list:
-            if schedule.schedule_id == schedule_id:
-                return schedule
+    def get_session_by_id(self, session_id):
+        for session in self.__session_list:
+            if session.session_id == session_id:
+                return session
         return False
 
-class GymClass(ScheduleManager):
+class GymClass(SessionManager):
     __next_id = 1
 
     def __init__(self, name, detail):
@@ -239,78 +256,26 @@ class GymClass(ScheduleManager):
     
     @property
     def info(self):
-        schedules = []
-        for schedule in self.schedule_list:
-            schedules.append(schedule.info)
+        sessions = []
+        for session in self.session_list:
+            sessions.append(session.info)
 
         return {
             "Class id": self.__class_id,
             "Class name": self.__name,
             "Class detail": self.__detail,
-            "Class schedule": schedules
+            "Class session": sessions
         }
     
     def __str__(self):
-        text = f"Class name: {self.__name}\nClass id: {self.__class_id}\nSchedule:\n"
-        for schedule in self.schedule_list:
-            schedule_str = str(schedule)
+        text = f"Class name: {self.__name}\nClass id: {self.__class_id}\nSession:\n"
+        for session in self.session_list:
+            session_str = str(session)
 
-            indented_schedule = textwrap.indent(schedule_str, '   ')
+            indented_session = textwrap.indent(session_str, '   ')
 
-            text += f" - {indented_schedule.lstrip()}\n"
+            text += f" - {indented_session.lstrip()}\n"
         return text
-
-class Payment:
-    __TRAINER_TIER_PRICE = {
-        # private, class
-        "Junior": [800,200],
-        "Senior": [1500,375],
-        "Master": [2500,625]
-    }
-
-    __LOCKER_HOUR_PRICE = {
-        "Normal": 35,
-        "VIP" : 70
-    }
-
-    __MEMBER_DISCOUNT = {
-        # booking, item, locker
-        "Monthly" : [0, 0, 0],
-        "Annual" : [20, 10, 15],
-        "Student" : [15, 0, 10]
-    }
-    
-    def __init__(self, gym):
-        self.__gym = gym
-
-    def pay_all(self, member):
-        pass
-
-    def pay_booking(self, member):
-        pending_bookings = member.get_pending_bookings() # need to change to NOT get locker booking since it is all already paid
-        membership_type = member.current_membership
-        for pending_booking in pending_bookings:
-            if isinstance(pending_booking, TrainingBooking):
-                schedule = pending_booking.schedule
-                schedule_type = schedule.get_schedule_type()
-                trainer_tier = schedule.trainer.tier
-                price = Payment.__TRAINER_TIER_PRICE[trainer_tier][schedule_type == "Class"]
-                discount = Payment.__MEMBER_DISCOUNT[membership_type][0]
-                discount_price = round(price * (1-discount), 2)
-                self.__gym.create_transaction("CLS" if "Class" else "PVT", discount_price, datetime.now(), member)
-
-                # also comes with a free normal locker
-                new_locker_booking = schedule.room.reserve_locker("Normal", member, schedule.start, schedule.end, "Confirmed")
-                print(f"Reserved a free included normal locker during the same time starting {new_locker_booking.start} and ending {new_locker_booking.end} for {new_locker_booking.member.name} at locker {new_locker_booking.locker.locker_id}")
-
-            elif isinstance(pending_booking, LockerBooking): # need to change to NOT locker booking since it is all already paid
-                discount = Payment.__MEMBER_DISCOUNT[membership_type][2]
-                locker_price = Payment.__LOCKER_HOUR_PRICE[pending_booking.locker.type]
-                locker_duration = pending_booking.locker.duration_hours
-                total_price = locker_price * locker_duration
-                discount_price = round(total_price * (1-discount), 2)
-                self.__gym.create_transaction("LKR" if "Normal" else "LKR-VIP", discount_price, datetime.now(), member)
-            pending_booking.confirm()
 
 class LockerBooking(Booking):
     def __init__(self, member, locker, start, end, status):
@@ -364,9 +329,30 @@ class LockerBooking(Booking):
             "End time": self.end.time(),
             "Status": status_text
         }
+    
+    @property
+    def price(self):
+        membership_type = self.__member.current_membership
+        membership_enum = MembershipPlan[membership_type.upper()]
+        locker_enum = LockerType[self.__locker.type.upper()]
+    
+        discount = membership_enum.locker_discount
+        locker_price = locker_enum.value
+        locker_duration = self.duration_hours
+        
+        total_price = locker_price * locker_duration
+        discount_price = round(total_price * (1 - discount), 2)
+        return discount_price
 
     def is_time_conflict(self, start, end): # 7-10 9-12 > 7<12 true, 9<10 true
         return self.__start < end and start < self.__end
+    
+    def __str__(self):
+        if self.status == "Pending":
+            status_text = "Pending. Please Pay to Confirm Booking"
+        else:
+            status_text = self.status
+        return f"Lockertype: {self.__locker.type} Date: {self.start.date()} Start Time: {self.start.time()} End Time: {self.end.time()} Status: {status_text}"
 
 class Locker:
     def __init__(self, room, type = "Normal"):
@@ -417,7 +403,7 @@ class Room:
         self.__status = "Operating"
         self.__max_people = max_people
         self.__equipment_list = []
-        self.__schedule_list = []
+        self.__session_list = []
         self.__locker_list = []
 
     @property
@@ -443,8 +429,8 @@ class Room:
             self.__locker_list.append(Locker(self, "VIP"))
 
     def is_available(self, start, end, date):
-        for schedule in self.__schedule_list:
-            if not schedule.is_available(start, end, date):
+        for session in self.__session_list:
+            if not session.is_available(start, end, date):
                 return False
         return True
     
@@ -459,27 +445,242 @@ class Room:
     # def create_equipments(self, data):
     #     for equipment in data:
     #         self.__equipment_list.append()
-    
-class Transaction:
-    def __init__(self, type, amount, timestamp, member):
-        self.__type = type
-        self.__amount = amount
-        self.__timestamp = timestamp
-        self.__member = member
 
-    def __str__(self):
-        return f"[{self.__type}] {self.__amount}_{self.__timestamp.date()}_{self.__timestamp.replace(microsecond=0).time()}_{self.__member.member_id}"
+class Product:
+    def __init__(self, name, amount, price):
+        self.__item_id = "todo"
+        self.__name = name
+        self.__amount = amount
+        self.__price = price
+
+    @property
+    def name(self):
+        return self.__name
+
+    @property
+    def price(self):
+        return self.__price
+
+    def add_stock(self, amount):
+        self.__amount += amount
+
+    def sell_stock(self, amount):
+        if self.__amount < amount:
+            raise Exception("Not enough stock available")
+        self.__amount -= amount
+
+class ProductAmount:
+    def __init__(self, item, amount):
+        self.__item = item
+        self.__amount = amount
+    
+    @property
+    def item(self):
+        return self.__item
+    
+    @property
+    def amount(self):
+        return self.__amount
+    
+    def price(self, member = None):
+        price = self.__item.price * self.__amount
+        if member:
+            membership_type = member.current_membership
+            discount = MembershipPlan[membership_type.upper()].product_discount
+            return round(price * (1 - discount), 2)
+        else:
+            return price
+        
+# class Transaction:
+#     __TRAINER_TIER_PRICE = {
+#     # private, class
+#     "Junior": [800,200],
+#     "Senior": [1500,375],
+#     "Master": [2500,625]
+#     }
+
+#     __LOCKER_HOUR_PRICE = {
+#         "Normal": 35,
+#         "VIP" : 70
+#     }
+
+#     __MEMBER_DISCOUNT = {
+#         # booking, item, locker
+#         "Monthly" : [0, 0, 0],
+#         "Annual" : [0.2, 0.1, 0.15],
+#         "Student" : [0.15, 0, 0.10]
+#     }
+
+#     __MEMBER_PRICE = {
+#         "Monthly" : 1500,
+#         "Annual" : 15000,
+#         "Student" : 1200
+#     }
+
+#     def __init__(self, user = None, new_membership_type = None, daypass_date = None, refund = False):
+#         self.__timestamp_payed = None
+#         self.__user = user # can just be a default user, or member, or None if stuff like buy item stuff wid nothing else
+#         self.__item_amount_list = []
+#         self.__training_booking_list = []
+#         self.__locker_booking_list = []
+#         self.__new_membership_type = new_membership_type
+#         self.__daypass_date = daypass_date
+#         self.__refund = refund
+#         self.__qr_code = None
+#         self.__status = "Pending"
+
+#     @property
+#     def total_amount(self):
+#         total = 0
+#         # get item total
+#         for item_amount in self.__item_amount_list:
+#             total += item_amount.item.price * item_amount.amount
+
+#         # get training booking total
+#         if isinstance(self.__user, Member):
+#             membership_type = self.__user.current_membership
+#         for training_booking in self.__training_booking_list:
+#             session = training_booking.session
+#             session_type = session.get_session_type()
+#             trainer_tier = session.trainer.tier
+#             price = Transaction.__TRAINER_TIER_PRICE[trainer_tier][session_type == "Class"]
+#             discount = Transaction.__MEMBER_DISCOUNT[membership_type][0]
+#             discount_price = round(price * (1-discount), 2)
+#             total += discount_price
+
+#         # get locker booking total
+#         for locker_booking in self.__locker_booking_list:
+#             discount = Transaction.__MEMBER_DISCOUNT[membership_type][2]
+#             locker_price = Transaction.__LOCKER_HOUR_PRICE[locker_booking.locker.type]
+#             locker_duration = locker_booking.locker.duration_hours
+#             total_price = locker_price * locker_duration
+#             discount_price = round(total_price * (1-discount), 2)
+#             total += discount_price
+
+#         if self.__new_membership_type:
+#             membership_price = Transaction.__MEMBER_PRICE[self.__new_membership_type]
+#             total += membership_price
+
+#         if self.__daypass_date:
+#             total += 500
+
+#     @property
+#     def user(self):
+#         return self.__user
+    
+#     @property
+#     def status(self):
+#         return self.__status
+    
+#     def update_all_related_info_payed(self):
+#         self.__status = "Payed"
+#         self.__timestamp_payed = datetime.now()
+
+#         # update stock of all items in the list
+#         for item_amount in self.__item_amount_list:
+#             item_amount.item.sell_stock(item_amount.amount)
+
+#         # update training booking status
+#         for training_booking in self.__training_booking_list:
+#             training_booking.status = "Confirmed"
+
+#         # update locker booking status
+#         for locker_booking in self.__locker_booking_list:
+#             locker_booking.status = "Confirmed"
+
+#         # update guest date list if daypass
+#         if self.__daypass_date:
+#             self.__user.add_guest_date(self.__daypass_date)
+
+#         # update membership type
+#         if self.__new_membership_type:
+#             if isinstance(self.__user, Member):
+#                 self.__user.set_membership(self.__new_membership_type)
+#             elif isinstance(self.__user, User):
+#                 new_member = Member(self.__user.citizen_id, self.__user.name, self.__user.age, self.__new_membership_type, guest_date_list=self.__user.guest_date_list)
+#                 return new_member
+#             else:
+#                 raise Exception("I dont know who this annonymus is")
+#         return None
+
+#     def book_locker_if_training_booking(self):
+#         for training_booking in self.__training_booking_list:
+#             session = training_booking.session
+#             new_locker_booking = session.room.reserve_locker("Normal", self.__user, session.start, session.end, "Confirmed")
+#             print(f"Reserved a free included normal locker during the same time starting {new_locker_booking.start} and ending {new_locker_booking.end} for {new_locker_booking.member.name} at locker {new_locker_booking.locker.locker_id}")
+
+#     def pay_cash(self):        
+#         self.book_locker_if_training_booking()
+#         new_member = self.update_all_related_info_payed()
+#         if new_member:
+#             return new_member
+
+#     def create_qr(self):
+#         qrcode = PaymentGateway.create_qr(self.total_amount)
+#         self.__qr_code = qrcode
+#         return qrcode
+
+#     def validate_qr_payment(self):
+#         if PaymentGateway.validate_qr_payment(self.__qr_code):
+#             self.book_locker_if_training_booking()
+#             new_member = self.update_all_related_info_payed()
+#             if new_member:
+#                 return new_member
+#             print("Payment Successful")
+#             return True
+#         print("QR has not been paid yet")
+#         return False
+
+#     def pay_card(self):
+#         if not PaymentGateway.pay_card(self.total_amount):
+#             raise Exception("Payment Failed")
+#         self.book_locker_if_training_booking()
+#         new_member = self.update_all_related_info_payed()
+#         if new_member:
+#             return new_member
+
+#     def add_item_amount(self, item, amount):
+#         self.__item_amount_list.append(ProductAmount(item, amount))
+
+#     def add_training_booking(self, training_booking):
+#         self.__training_booking_list.append(training_booking)
+
+#     def add_locker_booking(self, locker_booking):
+#         self.__locker_booking_list.append(locker_booking)
+
+#     def __str__(self):
+#         text = f"User: {self.__user.name}\n PaymentTimeStamp: {self.__timestamp_payed}\n"
+#         text = f"Type: {"Refund" if self.__refund else "Payment"}\n Status: {self.__status}\n"
+#         text += f"TotalAmount: {self.total_amount}\n"
+
+#         if self.__item_amount_list: text += "ProductBuyingList:\n"
+#         for item_amount in self.__item_amount_list:
+#             text += f" - Name: {item_amount.item.name} Amount: {item_amount.amount} Total: {item_amount.amount * item_amount.item.price}\n"
+
+#         if self.__training_booking_list: text += "TrainingBookingList:\n"
+#         for training_booking in self.__training_booking_list:
+#             text += f" - {training_booking}\n"
+
+#         if self.__locker_booking_list: text += "LockerBookingList:\n"
+#         for locker_booking in self.__locker_booking_list:
+#             text += f" - {locker_booking}\n"
+
+#         if self.__daypass_date:
+#             text += f"DayPass for date: {self.__daypass_date}\n"
+
+#         if self.__new_membership_type:
+#             text += f"New Membership: {self.__new_membership_type}\n"
 
 class Gym:
     def __init__(self, name, location):
         self.__name = name
         self.__location = location
-        self.__payment = Payment(self)
         self.__user_list = []
         self.__room_list = []
         self.__item_list = []
         self.__gym_class_list = []
-        self.__transaction_list = []
+        self.__order_list = []
+        self.__payment_gateway = PaymentGateway()
 
     @property
     def payment(self):
@@ -504,11 +705,9 @@ class Gym:
         trainer = Trainer(citizen_id, name, age, tier, specialization)
         self.__user_list.append(trainer)
         return trainer
-    
-    def create_transaction(self, type, amount, timestamp, member):
-        transaction = Transaction(type, amount, timestamp, member)
-        self.__transaction_list.append(transaction)
-        member.add_transaction(transaction)
+
+    def create_item(self, name, amount, price):
+        item = Product(name, amount, price)
     
     # def create_manager(self, citizen_id, name, age, tier, specialization):
     #     manager = Manager(citizen_id, name, age, tier, specialization)
@@ -531,34 +730,115 @@ class Gym:
                 return gym_class
         raise Exception("gym class not found")
     
-    def get_schedule_by_id(self, schedule_id):
+    def get_session_by_id(self, session_id):
         for gym_class in self.__gym_class_list:
-            schedule = gym_class.get_schedule_by_id(schedule_id)
-            if schedule:
-                return schedule
+            session = gym_class.get_session_by_id(session_id)
+            if session:
+                return session
         for user in self.__user_list:
             if isinstance(user, Trainer):
-                schedule = user.get_schedule_by_id(schedule_id)
-                if schedule:
-                    return schedule
-        raise Exception("schedule not found")
+                session = user.get_session_by_id(session_id)
+                if session:
+                    return session
+        raise Exception("session not found")
     
+    def get_member_by_id(self, member_id):
+        for user in self.__user_list:
+            if hasattr(user, "member_id") and user.member_id == member_id:
+                return user
+        raise Exception("member not found")
+    
+    def get_order_by_id(self, order_id):
+        for order in self.__order_list:
+            pass
+            # if order.
+
     def get_user_by_citizen_id(self, citizen_id):
         for user in self.__user_list:
             if user.citizen_id == citizen_id:
                 return user
         raise Exception("user not found")
     
-    def enroll_member(self, member, schedule_id):
-        schedule = self.get_schedule_by_id(schedule_id)
-        schedule.enroll_member(member)
+    def create_order(self, user = None, new_membership_type = None, daypass_date = None, refund = False):
+        if refund:
+            order = OrderRefund(user)
+        else:
+            order = Order(user)
+        self.__order_list.append(order)
+        if isinstance(user, Member):
+            user.add_order(order)
+        return order
+    
+    # def create_transaction(self, user = None, new_membership_type = None, daypass_date = None, refund = False):
+    #     transaction = Transaction(user = user, daypass_date=daypass_date, refund=refund)
+    #     self.__transaction_list.append(transaction)
+    #     if isinstance(user, Member):
+    #         user.add_transaction(transaction)
+    #     return transaction
+    
+    # def create_or_add_to_transaction(self, user):
+    #     for transaction in self.__transaction_list:
+    #         if transaction.user == user and transaction.status == "Pending":
+    #             transaction
+    
+    def enroll_member(self, member, session_id):
+        session = self.get_session_by_id(session_id)
+        session.enroll_member(member)
+
+    def enroll_member_by_id(self, member_id, session_id):
+        member = self.get_member_by_id(member_id)
+        session = self.get_session_by_id(session_id)
+        booking = session.enroll_member(member)
+
+    def replace_user_with_member(self, member):
+        citizen_id = member.citizen_id
+        for idx, user in enumerate(self.__user_list):
+            if user.citizen_id == citizen_id:
+                self.__user_list[idx] = member
+                print(f"User with citizen_id: {user.citzen_id} has been replaced by Member with {member.current_membership} membership")
+
+    def process_order(self, order_id):
+        self.get_order_by_id()
+
+    # def pay_cash(self, user):
+    #     for transaction in self.__transaction_list:
+    #         if transaction.user == user and transaction.status == "Pending":
+    #             new_member = transaction.pay_cash()
+    #             if isinstance(new_member, Member):
+    #                 self.replace_user_with_member(new_member)
+    #             return
+    #     raise Exception("Transaction of user not found")
+    
+    # def create_qr_to_pay(self, user):
+    #     for transaction in self.__transaction_list:
+    #         if transaction.user == user and transaction.status == "Pending":
+    #             qr_code = transaction.create_qr()
+    #             return qr_code
+                
+    # def validate_qr_payment(self, user):
+    #     for transaction in self.__transaction_list:
+    #         if transaction.user == user and transaction.status == "Pending":
+    #             result = transaction.validate_qr_payment()
+    #             if isinstance(result, Member):
+    #                 self.replace_user_with_member(result)
+    #                 return True
+    #             return result
+            
+    # def pay_card(self, user):
+    #     for transaction in self.__transaction_list:
+    #         if transaction.user == user and transaction.status == "Pending":
+    #             new_member = transaction.pay_card()
+    #             if isinstance(new_member, Member):
+    #                 self.replace_user_with_member(new_member)
+    #             return
+    #     raise Exception("Transaction of user not found")
 
 class User(ABC):
-    def __init__(self, citizen_id, name, age):
+    def __init__(self, citizen_id, name, age, guest_date_list = []):
         self.__citizen_id = citizen_id
         self.__name = name
         self.__age = age
-        self.__guest_date_list = []
+        self.__guest_date_list = guest_date_list
 
     @property
     def citizen_id(self):
@@ -568,6 +848,17 @@ class User(ABC):
     def name(self):
         return self.__name
     
+    @property
+    def age(self):
+        return self.__age
+    
+    @property
+    def guest_date_list(self):
+        return tuple(self.__guest_date_list)
+    
+    def add_guest_date(self, date):
+        self.__guest_date_list.append(date)
+    
     @abstractmethod
     def check_current_notifications(self):
         pass
@@ -575,8 +866,8 @@ class User(ABC):
 class Member(User):
     __next_id = 1
 
-    def __init__(self, citizen_id, name, age, current_membership = "Monthly", medical_history = "", goal = ""): #MEM-2023-001
-        super().__init__(citizen_id, name, age)
+    def __init__(self, citizen_id, name, age, current_membership = "Monthly", medical_history = "", goal = "", guest_date_list = []): #MEM-2023-001
+        super().__init__(citizen_id, name, age, guest_date_list=guest_date_list)
         self.__member_id = f"MEM-{Member.__next_id:03d}"
         Member.__next_id += 1
         self.__current_membership = current_membership
@@ -585,7 +876,7 @@ class Member(User):
         self.__training_plan = ""
         self.__status = "Pending"
         self.__membership_log_list = []
-        self.__transaction_list = []
+        self.__order_list = []
         self.__training_booking_list = []
         self.__locker_booking_list = []
 
@@ -616,12 +907,12 @@ class Member(User):
         elif isinstance(booking, LockerBooking):
             self.__locker_booking_list.append(booking)
 
-    def add_transaction(self, transaction):
-        self.__transaction_list.append(transaction)
+    def add_order(self, order):
+        self.__order_list.append(order)
 
-    def print_transactions(self):
-        for transaction in self.__transaction_list:
-            print(transaction)
+    def print_orders(self):
+        for order in self.__order_list:
+            print(order)
 
     def get_current_bookings(self):
         training_bookings = []
@@ -635,8 +926,8 @@ class Member(User):
             "locker_booking" : locker_bookings
         }
     
-    def enroll_schedule(self, gym, schedule_id):
-        gym.enroll_member(self,schedule_id)
+    def enroll_session(self, gym, session_id):
+        gym.enroll_member(self,session_id)
 
     def check_current_notifications(self):
         for training_booking in self.__training_booking_list:
@@ -655,19 +946,19 @@ class Staff(User):
     def staff_id(self):
         return self.__staff_id
 
-class Trainer(Staff, ScheduleManager):
+class Trainer(Staff, SessionManager):
     def __init__(self, citizen_id, name, age, tier, specialization): #MEM-2023-001
         Staff.__init__(self, citizen_id, name, age)
-        ScheduleManager.__init__(self)
+        SessionManager.__init__(self)
         self.__tier = tier
         self.__specialization = specialization
-        self.__schedule_list = []
+        self.__session_list = []
 
     @property
     def tier(self):
         return self.__tier
 
-    def write_training_plan(self, sched_or_mem: Schedule | Member, text):
+    def write_training_plan(self, sched_or_mem: Session | Member, text):
         sched_or_mem.set_training_plan(text)
 
     def check_current_notifications(self):
@@ -676,11 +967,16 @@ class Trainer(Staff, ScheduleManager):
 def create_stuff():
     gym = Gym("my gym", "1/45 bangkok thailand")
 
+    # item stuff
+    gym.create_item("Energy drink", 50, 40)
+    gym.create_item("Water", 100, 15)
+    gym.create_item("Whey protein", 20, 1500)
+
     private_room = gym.create_room("a private room", 2)
     private_room.create_lockers(2,1)
 
     gym_bro = gym.create_trainer("987654321", "Yabro Muscal", 25, "Junior", "muscle making")
-    gym_bro.create_repeating_schedule(time(8,0,0),time(10,30,0),date(2026,4,15),7,3,1,private_room)
+    gym_bro.create_repeating_session(time(8,0,0),time(10,30,0),date(2026,4,15),7,3,1,private_room)
 
     manager_tyler = None
 
@@ -691,14 +987,14 @@ def create_stuff():
     yoga_studio = gym.create_room("yoga studio", 10)
     yoga_studio.create_lockers(10,4)
     multi_studio = gym.create_room("multi studio", 5)
-    yoga_studio.create_lockers(5,2)
+    multi_studio.create_lockers(5,2)
     
     yoga_class = gym.create_class("yoga", "stretchin dat bodae")
-    yoga_class.create_repeating_schedule(time(10,0,0),time(11,30,0),date(2026,2,7),7,5,10,yoga_studio,gym_bro,yoga_class)
+    yoga_class.create_repeating_session(time(10,0,0),time(11,30,0),date(2026,2,7),7,5,10,yoga_studio,gym_bro,yoga_class)
 
     bike_class = gym.create_class("bike", "workin on our leggies")
-    eve_bike_sched = bike_class.create_schedule(time(15,30,0),time(16,30,0),date.today(),3,multi_studio,gym_bro,bike_class)
-    night_bike_sched = bike_class.create_schedule(time(18,0,0),time(19,30,0),date.today(),5,multi_studio,gym_bro,bike_class)
+    eve_bike_sched = bike_class.create_session(time(15,30,0),time(16,30,0),date.today(),3,multi_studio,gym_bro,bike_class)
+    night_bike_sched = bike_class.create_session(time(18,0,0),time(19,30,0),date.today(),5,multi_studio,gym_bro,bike_class)
 
     gym_bro.write_training_plan(night_bike_sched, "we'll be biking for 30 km")
     gym_bro.write_training_plan(bob_membership, "focus on training the lower leg area")
@@ -708,22 +1004,26 @@ def create_stuff():
 def run_test(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, bob_membership: Member):
     gym.print_available_classes() # to see and choose what to enroll in
 
-    schedule_id = input("Enter schedule id to enroll into: ")
+    session_id = input("Enter session id to enroll into: ")
+    member_id = input("Enter member_id: ")
+
     # citizen_id = input("Enter citizen_id: ")
     # user = gym.get_user_by_citizen_id(citizen_id)
 
     # both works
-    # gym.enroll_member(user, schedule_id)
-    bob_membership.enroll_schedule(gym, schedule_id)
+    gym.enroll_member_by_id(member_id, session_id)
+    # gym.enroll_member(user, session_id)
+    # bob_membership.enroll_session(gym, session_id)
 
     pprint.pprint(bob_membership.get_current_bookings(), indent=4)
-    bob_membership.print_transactions()
+    bob_membership.print_orders()
     # print(bob_membership.get_pending_bookings())
 
-    gym.payment.pay_booking(bob_membership)
+    gym.pay_card(bob_membership)
+    # gym.payment.pay_booking(bob_membership)
 
     pprint.pprint(bob_membership.get_current_bookings(), indent=4)
-    bob_membership.print_transactions()
+    bob_membership.print_orders()
 
 
 def run_api_test(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, bob_membership: Member):
@@ -738,7 +1038,7 @@ def run_api_test(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, b
         classes = gym.get_available_classes()
         return {
             "classes": classes,
-            "tip": "To enroll in class go to /enrollclass/{schedule_id} with the content {date: 'yyyy-mm-dd'}"
+            "tip": "To enroll in class go to /enrollclass/{session_id} with the content {'citizen_id': 'xxxxxxxxx'}"
         }
     
     @app.get("/showbooking")
@@ -748,15 +1048,25 @@ def run_api_test(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, b
             "bookings": bookings,
         }
     
-    @app.post("/enrollclass/{schedule_id}")
-    def enroll_class(schedule_id: str, body: dict) -> dict:
+    @app.post("/enrollclass/{session_id}")
+    def enroll_class(session_id: str, body: dict) -> dict:
         try:
-            citizen_id = body["citizen_id"]
-            user = gym.get_user_by_citizen_id(citizen_id)
-            print("user is good")
-            gym.enroll_member(user, schedule_id)
-            print("enroll is good")
-            return {"success": f"{user.name} has been succesfully enrolled into class with schedule_id: {schedule_id}"}
+            member_id = body["member_id"]
+            gym.enroll_member_by_id(member_id, session_id)
+            return {"success": f"{member_id} has been succesfully enrolled into class with session_id: {session_id}"}
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        
+    @app.post("/pay_bookings")
+    def pay_bookings(body: dict) -> dict:
+        try:
+            member_id = body["member_id"]
+            member = gym.get_member_by_id(member_id)
+            total, payments = gym.payment.pay_booking(member)
+            return {
+                "success": f"{member.name} has succesfully payed a total of {total} with these payments",
+                "payments": [f"{payment}" for payment in payments]
+            }
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
