@@ -686,7 +686,7 @@ class Gym:
 
     @property
     def payment(self):
-        return self.__payment
+        return self.__payment_gateway
 
     def create_room(self, name, max_people):
         room = Room(self, name, max_people)
@@ -710,6 +710,7 @@ class Gym:
 
     def create_item(self, name, amount, price):
         item = Product(name, amount, price)
+        self.__item_list.append(item)
     
     # def create_manager(self, citizen_id, name, age, tier, specialization):
     #     manager = Manager(citizen_id, name, age, tier, specialization)
@@ -797,10 +798,10 @@ class Gym:
         for idx, user in enumerate(self.__user_list):
             if user.citizen_id == citizen_id:
                 self.__user_list[idx] = member
-                print(f"User with citizen_id: {user.citzen_id} has been replaced by Member with {member.current_membership} membership")
+                print(f"User with citizen_id: {user.citizen_id} has been replaced by Member with {member.current_membership} membership")
 
-    def process_order(self, order_id):
-        self.get_order_by_id()
+    def process_order(self, order_id): 
+        self.get_order_by_id(order_id)
 
     # def pay_cash(self, user):
     #     for transaction in self.__transaction_list:
@@ -897,7 +898,7 @@ class Member(User):
                 pending_bookings.append(training_booking)
         for locker_booking in self.__locker_booking_list:
             if locker_booking.status == "Pending":
-                pending_bookings.append(training_booking)
+                pending_bookings.append(locker_booking)
         return pending_bookings
 
     def set_training_plan(self, text):
