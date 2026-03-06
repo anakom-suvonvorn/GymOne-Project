@@ -5,8 +5,6 @@ import uvicorn, textwrap, pprint
 from order_and_payment import MembershipPlan, TrainerTier, LockerType, AbstractOrder, OrderItem, Order, OrderRefund, PaymentGateway
 # from order_and_payment import *
 
-# paul has edited this
-
 class Booking:
     def __init__(self, status = "Pending"):
         self.__status = status # statuses: Waitlist Confirmed Check-in Completed Cancelled
