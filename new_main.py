@@ -725,6 +725,20 @@ class Gym:
         trainer = Trainer(citizen_id, name, age, tier, specialization)
         self.__user_list.append(trainer)
         return trainer
+    
+    def approve_daypass(self, citizen_id, name, age, target_date):
+        try:
+            user = self.get_user_by_citizen_id(citizen_id)
+        except Exception:
+            user = Guest(citizen_id, name, age)
+            self.__user_list.append(user)
+
+        if target_date in user.guest_date_list:
+            raise Exception(f"Daypass for {target_date} already purchased.")
+
+        order = self.create_order(user)
+        order.create_order_item(target_date, type="DaypassDate")
+        return order
 
     def create_item(self, name, amount, price):
         item = Product(name, amount, price)
@@ -957,6 +971,22 @@ class Member(User):
         for training_booking in self.__training_booking_list:
             print(training_booking.notification, end="")
         # return super().check_current_notifications()
+
+class Guest(User):
+    __next_id = 1
+
+    def __init__(self, citizen_id, name, age):
+        super().__init__(citizen_id, name, age)
+        self.__guest_id = f"GST-{Guest.__next_id:03d}"
+        Guest.__next_id += 1
+
+    @property
+    def guest_id(self):
+        return self.__guest_id
+
+    def check_current_notifications(self):
+        return
+
     
 class Staff(User):
     __next_id = 1
@@ -1098,10 +1128,19 @@ class Order(AbstractOrder):
         self.payment.process()
     
     def verify_and_update_all_info(self):
-        return
+        for order_item in self._AbstractOrder__order_item_list:
+            t = order_item._OrderItem__type
+            item = order_item._OrderItem__item
+            user = self._AbstractOrder__user
+            if t == "DaypassDate":
+                user.add_guest_date(item)
+            elif t == "TrainingBooking":
+                item.confirm()
+            elif t == "LockerBooking":
+                item.confirm()
     
-    def create_order_item(self, item, type="auto"):
-        self.__order_item_list.append(OrderItem(item, type))
+    def create_order_item(self, item, type="Auto"):
+        self._AbstractOrder__order_item_list.append(OrderItem(item, type))
 
 class OrderRefund(AbstractOrder):
     def process(self):
