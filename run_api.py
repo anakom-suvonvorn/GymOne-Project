@@ -2,7 +2,7 @@ from datetime import datetime, date, time, timedelta
 import uvicorn, pprint
 from fastapi import FastAPI, HTTPException
 
-from models import Gym, Member, Trainer
+from models import *
 
 def create_stuff():
     gym = Gym("my gym", "1/45 bangkok thailand")
@@ -109,6 +109,23 @@ def run_api(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, bob_me
             }
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
+        
+    @app.post("/manager/get_report/{month}/{year}")
+    def get_report(month: int, year: int):
+        try:
+            # 1. Call the method on the INSTANCE (current_manager), not the CLASS (Manager)
+            # 2. This will return the dictionary from your gather_report method
+            report_data = Manager.get_reports(month, year)
+            
+            return {
+                "status": "success", 
+                "data": report_data
+            }
+        except Exception as e:
+            return {
+                "status": "error", 
+                "message": str(e)
+            }
 
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
 

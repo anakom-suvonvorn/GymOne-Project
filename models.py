@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, date, time, timedelta
 from enum import Enum
+from os import name
 import textwrap
 
 class Booking:
@@ -516,11 +517,19 @@ class Gym:
         self.__item_list = []
         self.__gym_class_list = []
         self.__order_list = []
+        self.__payment_list = []
         self.__payment_gateway = PaymentGateway()
 
     @property
     def payment(self):
         return self.__payment_gateway
+    
+    def create_payment_list(self):
+        self.__payment_list = []
+
+        for order in self.__order_list:
+            if order.payment:
+                self.__payment_list.append(order.payment)
 
     def create_room(self, name, max_people):
         room = Room(self, name, max_people)
@@ -603,8 +612,7 @@ class Gym:
         for order in self.__order_list:
             if order.order_id == order_id:
                 return order
-            else:
-                raise Exception("order not found")
+        raise Exception("order not found")
 
     def get_user_by_citizen_id(self, citizen_id):
         for user in self.__user_list:
@@ -685,6 +693,83 @@ class Gym:
     #                 self.replace_user_with_member(new_member)
     #             return
     #     raise Exception("Transaction of user not found")
+
+    def gather_report(self, month, year):
+        month_now = datetime.now().month
+        year_now = datetime.now().year
+
+        if year > year_now or (year == year_now and month > month_now):
+            raise Exception("Report for future month/year cannot be generated")
+
+        revenue_data = {
+            "Membership": 0.0,
+            "Daypass": 0.0,
+            "Product": 0.0,
+            "Locker": 0.0,
+            "Training": 0.0
+        }
+
+        membership_type_count = {
+            "Monthly": 0,
+            "Annual": 0,
+            "Student": 0
+        }
+
+        total_revenue = 0.0
+        matched_orders = []
+
+        for order in self.__order_list:
+            payment = order.payment
+            if not payment:
+                continue
+
+            if payment.status not in ["Paid", "refunded"]:
+                continue
+
+            if payment.timestamp is None:
+                continue
+
+            pay_date = payment.timestamp
+            if pay_date.month != month or pay_date.year != year:
+                continue
+
+            matched_orders.append(order)
+
+            multiplier = 1 if payment.status == "Paid" else -1
+
+            for order_item in order.order_items:
+                item_type = order_item.item_type
+                item_value = order_item.item
+                price = order_item.price(order.user) * multiplier
+
+                if item_type == "NewMembershipType":
+                    revenue_data["Membership"] += price
+                    if multiplier > 0:
+                        membership_type_count[item_value] = membership_type_count.get(item_value, 0) + 1
+
+                elif item_type == "DaypassDate":
+                    revenue_data["Daypass"] += price
+
+                elif item_type == "ProductAmount":
+                    revenue_data["Product"] += price
+
+                elif item_type == "LockerBooking":
+                    revenue_data["Locker"] += price
+
+                elif item_type == "TrainingBooking":
+                    revenue_data["Training"] += price
+
+                total_revenue += price
+
+        return {
+            "month": month,
+            "year": year,
+            "matched_orders_count": len(matched_orders),
+            "revenue": revenue_data,
+            "total_revenue": round(total_revenue, 2),
+            "membership_distribution": membership_type_count
+        }
+
 
 class User(ABC):
     def __init__(self, citizen_id, name, age, guest_date_list = []):
@@ -832,7 +917,18 @@ class Trainer(Staff, SessionManager):
 
     def check_current_notifications(self):
         return super().check_current_notifications()
-    
+
+class Manager(Staff):
+    def __init__(self, citizen_id, name, age): #MEM-2023-001
+        super().__init__(citizen_id, name, age)
+        self.__gym = Gym
+
+    def add_stock(self, name, amount, price):
+        self.__gym.create_item(name, amount, price)
+
+    def get_reports(self, month, year):
+        return self.__gym.gather_report(month, year)
+
 class MembershipPlan(Enum):
     # Tuple format: (price, booking_discount, product_discount, locker_discount)
     MONTHLY = (1500, 0.0, 0.0, 0.0)
@@ -881,6 +977,14 @@ class OrderItem:
     @property
     def price_paid(self):
         return self.__price_paid
+    
+    @property
+    def item_type(self):
+        return self.__type
+
+    @property
+    def item(self):
+        return self.__item
 
     def price(self, user):
         if self.__type == "DaypassDate":
@@ -919,6 +1023,22 @@ class AbstractOrder:
         for order_item in self.__order_item_list:
             total += order_item.price(self.__user)
         return total
+    
+    @property
+    def order_id(self):
+        return self.__order_id
+
+    @property
+    def user(self):
+        return self.__user
+
+    @property
+    def order_items(self):
+        return tuple(self.__order_item_list)
+
+    @property
+    def status(self):
+        return self.__status
     
     def set_payment(self, payment):
         if not isinstance(payment, (CashPayment, CreditCardPayment, QRPayment)):
@@ -1003,11 +1123,20 @@ class Payment(ABC):
     def status(self):
         return self.__status
     
+    @property
+    def timestamp(self):
+        return self.__timestamp_payed
+    
     def set_payment_gateway_transaction_id(self, id):
         self.__payment_gateway_transaction_id = id
 
     def set_status(self, status):
         self.__status = status
+
+        if self.status == "Paid" and self.__timestamp_payed is None:
+            self.__timestamp_payed = datetime.now()
+        elif self.status == "refunded" and self.__timestamp_payed is None:
+            self.__timestamp_payed = datetime.now()
 
     def set_amount(self, amount):
         self.__amount = amount
