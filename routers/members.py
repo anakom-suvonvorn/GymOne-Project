@@ -23,11 +23,11 @@ def show_available_private_sessions(gym = Depends(get_gym)):
         "private_sessions": private_sessions,
     }
 
-@router.get("/notifications/{member_id}")
+@router.get("/notifications/{member_id}") #########
 def show_notifications(member_id: str, gym = Depends(get_gym)):
     try:
         member = gym.get_member_by_id(member_id)
-        notifications = member.get_notifications()
+        notifications = member.show_notifications()
         return {
             "notifications": notifications,
         }
@@ -45,7 +45,17 @@ def show_current_bookings(member_id: str, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/checkselfinfo/{member_id}")
+@router.get("/showorder/{member_id}") ##########
+def show_current_orders(member_id: str, gym = Depends(get_gym)):
+    try:
+        member = gym.get_member_by_id(member_id)
+        return {
+            "orders": member.order_info
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/checkselfinfo/{member_id}") ##########
 def check_self_info(member_id: str, gym = Depends(get_gym)):
     try:
         member = gym.get_member_by_id(member_id)
@@ -62,7 +72,7 @@ def change_membership(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         member_id = body["member_id"]
         new_membership_type = body["new_membership_type"]
-        gym.change_memberhsip(member_id, new_membership_type) # NOTE: a lot of places ive written like this where we delegate gym to find it, but another way to do it is to gym.get_member_by_id right here, and call it directly here?
+        gym.change_membership(member_id, new_membership_type)
         return {
             "success": f"Success. Please pay to confirm application",
         }
@@ -74,8 +84,7 @@ def enroll_session(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         member_id = body["member_id"]
         session_id = body["session_id"]
-        is_private_room = body["is_private_room"]
-        gym.enroll_member_by_id(member_id, session_id, is_private_room)
+        gym.enroll_member_by_id(member_id, session_id)
         return {"success": f"{member_id} has been succesfully enrolled into session with session_id: {session_id}. please confirm booking by paying"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -100,14 +109,14 @@ def cancel_booking(body: dict, gym = Depends(get_gym)) -> dict:
 @router.post("/pay_order/creditcard")
 def pay_order_credit_card(body: dict, gym = Depends(get_gym)) -> dict:
     try:
-        member_id = body["member_id"]
-        member = gym.get_member_by_id(member_id)
+        member_id = body.get("member_id") # use this
+        order_id = body.get("order_id") # or this
         card_num = body["card_num"]
         cvv = body["cvv"]
         expiry = body["expiry"]
-        transaction_id, total, items = gym.pay_order_credit_card(member, card_num, cvv, expiry) # NOTE: might be member_id or guest_id or order_id to reference the order instead, needs looking into
+        transaction_id, total, items = gym.pay_order_credit_card(card_num, cvv, expiry, member_id, order_id) # NOTE: might be member_id or guest_id or order_id to reference the order instead, needs looking into
         return {
-            "success": f"{member.name} has succesfully payed a total of {total} with these items",
+            "success": f"{member_id} has succesfully payed a total of {total} with these items",
             "items": [f"{item}" for item in items],
             "transaction_id": transaction_id
         }
