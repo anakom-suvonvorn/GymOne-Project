@@ -1,12 +1,19 @@
 from datetime import datetime, date, time, timedelta
 import uvicorn, pprint
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, APIRouter
 
 from models import Gym, Member, Trainer
+from routers.members import router as member_router
+from routers.trainers import router as trainer_router
+from routers.receptionists import router as receptionist_router
+from routers.managers import router as manager_router
+
+gym = Gym("my gym", "1/45 bangkok thailand")
+
+def get_gym():
+    return gym
 
 def create_stuff():
-    gym = Gym("my gym", "1/45 bangkok thailand")
-
     # item stuff
     gym.create_item("Energy drink", 50, 40)
     gym.create_item("Water", 100, 15)
@@ -39,8 +46,6 @@ def create_stuff():
     gym_bro.write_training_plan(night_bike_sched, "we'll be biking for 30 km")
     gym_bro.write_training_plan(bob_membership, "focus on training the lower leg area")
 
-    return gym, gym_bro, manager_tyler, receptionist_alya, bob_membership
-
 def run_test(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, bob_membership: Member):
     gym.print_available_classes() # to see and choose what to enroll in
 
@@ -66,53 +71,21 @@ def run_test(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, bob_m
     bob_membership.print_orders()
 
 
-def run_api(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, bob_membership: Member):
+def run_api():
     app = FastAPI()
 
     @app.get("/")
     def home():
         return {"status": "Server is up!"}
-    
-    @app.get("/showclass")
-    def show_available_classes():
-        classes = gym.get_available_classes()
-        return {
-            "classes": classes,
-            "tip": "To enroll in class go to /enrollclass/{session_id} with the content {'citizen_id': 'xxxxxxxxx'}"
-        }
-    
-    @app.get("/showbooking")
-    def show_current_bookings():
-        bookings = bob_membership.get_current_bookings()
-        return {
-            "bookings": bookings,
-        }
-    
-    @app.post("/enrollclass/{session_id}")
-    def enroll_class(session_id: str, body: dict) -> dict:
-        try:
-            member_id = body["member_id"]
-            gym.enroll_member_by_id(member_id, session_id)
-            return {"success": f"{member_id} has been succesfully enrolled into class with session_id: {session_id}"}
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        
-    @app.post("/pay_bookings")
-    def pay_bookings(body: dict) -> dict:
-        try:
-            member_id = body["member_id"]
-            member = gym.get_member_by_id(member_id)
-            total, payments = gym.payment.pay_booking(member)
-            return {
-                "success": f"{member.name} has succesfully payed a total of {total} with these payments",
-                "payments": [f"{payment}" for payment in payments]
-            }
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
+
+    app.include_router(member_router)
+    app.include_router(trainer_router)
+    app.include_router(receptionist_router)
+    app.include_router(manager_router)
 
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
 
 if __name__ == "__main__":
-    gym, gym_bro, manager_tyler, receptionist_alya, bob_membership = create_stuff()
-    # run_test(gym, gym_bro, manager_tyler, receptionist_alya, bob_membership)
-    run_api(gym, gym_bro, manager_tyler, receptionist_alya, bob_membership)
+    create_stuff()
+    # run_test()
+    run_api()
