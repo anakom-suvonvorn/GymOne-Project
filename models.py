@@ -561,36 +561,39 @@ class Gym:
         self.__gym_class_list.append(gym_class)
         return gym_class
 
-    def create_member(self, citizen_id, name, age):
-        member = Member(citizen_id, name, age)
+    def create_member(self, citizen_id, name, birth_date):
+        member = Member(citizen_id, name, birth_date)
         self.__user_list.append(member)
         return member
     
-    def create_trainer(self, citizen_id, name, age, tier, specialization):
-        trainer = Trainer(citizen_id, name, age, tier, specialization)
+    def create_trainer(self, citizen_id, name, birth_date, tier, specialization):
+        trainer = Trainer(citizen_id, name, birth_date, tier, specialization)
         self.__user_list.append(trainer)
         return trainer
     
-    def approve_daypass(self, citizen_id, name, age, target_date):
+    def approve_daypass(self, citizen_id, name, birth_date):
         try:
             user = self.get_user_by_citizen_id(citizen_id)
         except Exception:
-            user = Guest(citizen_id, name, age)
+            user = Guest(citizen_id, name, birth_date)
             self.__user_list.append(user)
+
+        target_date = date.today()
 
         if target_date in user.guest_date_list:
             raise Exception(f"Daypass for {target_date} already purchased.")
 
         order = self.create_order(user)
-        order.create_order_item(target_date, type="DaypassDate")
+        daypass = DayPass()          
+        order.add_order_item(daypass)
         return order
 
     def create_item(self, name, amount, price):
         item = Product(name, amount, price)
         self.__item_list.append(item)
     
-    # def create_manager(self, citizen_id, name, age, tier, specialization):
-    #     manager = Manager(citizen_id, name, age, tier, specialization)
+    # def create_manager(self, citizen_id, name, birth_date, tier, specialization):
+    #     manager = Manager(citizen_id, name, birth_date, tier, specialization)
     #     self.__user_list.append(manager)
     #     return manager
     
@@ -753,20 +756,21 @@ class Gym:
         now = datetime.now()
         minutes_late = (now - booking.session.start).total_seconds() / 60
 
-        if minutes_late > 15:
+        if minutes_late <= 15:
+            booking.check_in()
+            return {
+                "status": "Check-in",
+                "session_id": booking.session.session_id
+            }
+        else:
+            # มาสายเกิน 15 นาที — บันทึก Late Check-in ตามโจทย์ข้อ 2.5
             booking.late_check_in()
             return {
                 "status": "Late Check-in",
                 "session_id": booking.session.session_id,
                 "minutes_late": round(minutes_late)
             }
-        else:
-            booking.check_in()
-            return {
-                "status": "Check-in",
-                "session_id": booking.session.session_id
-            }
-
+        
     def process_order(self, order_id): 
         self.get_order_by_id(order_id)
 
@@ -876,10 +880,10 @@ class Gym:
 
 
 class User(ABC):
-    def __init__(self, citizen_id, name, age, guest_date_list = []):
+    def __init__(self, citizen_id, name, birth_date, guest_date_list = []):
         self.__citizen_id = citizen_id
         self.__name = name
-        self.__age = age
+        self.__birth_date = birth_date
         self.__guest_date_list = guest_date_list
 
     @property
@@ -891,8 +895,8 @@ class User(ABC):
         return self.__name
     
     @property
-    def age(self):
-        return self.__age
+    def birth_date(self):
+        return self.__birth_date
     
     @property
     def guest_date_list(self):
@@ -908,8 +912,8 @@ class User(ABC):
 class Member(User):
     __next_id = 1
 
-    def __init__(self, citizen_id, name, age, current_membership = "Monthly", medical_history = "", goal = "", guest_date_list = []): #MEM-2023-001
-        super().__init__(citizen_id, name, age, guest_date_list=guest_date_list)
+    def __init__(self, citizen_id, name, birth_date, current_membership = "Monthly", medical_history = "", goal = "", guest_date_list = []): #MEM-2023-001
+        super().__init__(citizen_id, name, birth_date, guest_date_list=guest_date_list)
         self.__member_id = f"MEM-{Member.__next_id:03d}"
         Member.__next_id += 1
         self.__current_membership = current_membership
@@ -999,8 +1003,8 @@ class Member(User):
 class Guest(User):
     __next_id = 1
 
-    def __init__(self, citizen_id, name, age):
-        super().__init__(citizen_id, name, age)
+    def __init__(self, citizen_id, name, birth_date):
+        super().__init__(citizen_id, name, birth_date)
         self.__guest_id = f"GST-{Guest.__next_id:03d}"
         Guest.__next_id += 1
 
@@ -1014,8 +1018,8 @@ class Guest(User):
 class Staff(User):
     __next_id = 1
 
-    def __init__(self, citizen_id, name, age): #MEM-2023-001
-        super().__init__(citizen_id, name, age)
+    def __init__(self, citizen_id, name, birth_date): #MEM-2023-001
+        super().__init__(citizen_id, name, birth_date)
         self.__staff_id = f"STF-{Staff.__next_id:03d}"
         Staff.__next_id += 1
 
@@ -1024,8 +1028,8 @@ class Staff(User):
         return self.__staff_id
 
 class Trainer(Staff):
-    def __init__(self, citizen_id, name, age, tier, specialization): #MEM-2023-001
-        super().__init__(citizen_id, name, age)
+    def __init__(self, citizen_id, name, birth_date, tier, specialization): #MEM-2023-001
+        super().__init__(citizen_id, name, birth_date)
         self.__tier = tier
         self.__specialization = specialization
         self.__session_list = []
@@ -1094,8 +1098,8 @@ class Trainer(Staff):
         return super().check_current_notifications()
 
 class Manager(Staff):
-    def __init__(self, citizen_id, name, age): #MEM-2023-001
-        super().__init__(citizen_id, name, age)
+    def __init__(self, citizen_id, name, birth_date): #MEM-2023-001
+        super().__init__(citizen_id, name, birth_date)
         self.__gym = Gym
 
     def add_stock(self, name, amount, price):

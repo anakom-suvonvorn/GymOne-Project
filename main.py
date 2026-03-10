@@ -18,14 +18,14 @@ def create_stuff():
     private_room = gym.create_room("a private room", 2)
     private_room.create_lockers(2,1)
 
-    gym_bro = gym.create_trainer("987654321", "Yabro Muscal", 25, "Junior", "muscle making")
+    gym_bro = gym.create_trainer("987654321", "Yabro Muscal", date(2000, 1, 1), "Junior", "muscle making")
     gym_bro.create_repeating_session(time(8,0,0),time(10,30,0),date(2026,4,15),7,3,1,private_room)
 
     manager_tyler = None
 
     receptionist_alya = None
 
-    bob_membership = gym.create_member("123456789", "Bobda builder", 19)
+    bob_membership = gym.create_member("123456789", "Bobda builder", date(2006, 1, 1))
 
     yoga_studio = gym.create_room("yoga studio", 10)
     yoga_studio.create_lockers(10,4)

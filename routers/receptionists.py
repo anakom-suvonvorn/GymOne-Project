@@ -9,7 +9,7 @@ router = APIRouter(
 # NOTE: this whole file is just mainly for structure and knowing what to do
 # We can change the function call name or how it works inside or however we like it to be
 
-@router.post("/approvedaypass")
+@router.post("/approvedaypass") ############
 def approve_daypass(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         name = body["name"]
@@ -22,7 +22,7 @@ def approve_daypass(body: dict, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/checkinmember")
+@router.post("/checkinmember") 
 def check_in_member(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         member_id = body["member_id"]
