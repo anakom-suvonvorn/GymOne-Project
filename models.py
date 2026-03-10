@@ -4,8 +4,46 @@ from enum import Enum
 from os import name
 import textwrap
 
-class Booking:
+class OrderItem(ABC):
+    def __init__(self, payment_status = "Pending"):
+        self.__price_paid = None
+        self.__payment_status = payment_status
+
+    @property
+    def price_paid(self):
+        return self.__price_paid
+
+    @abstractmethod
+    def calculate_price(self, user = None):
+        pass
+
+    def set_price_paid(self, amount):
+        self.__price_paid = amount
+        self.__payment_status = "Paid"
+
+class DayPass(OrderItem):
+    def __init__(self, payment_status="Pending"):
+        super().__init__(payment_status)
+        self.__date = date.today()
+    
+    def calculate_price(self, user = None):
+        return 500
+    
+class NewMembership(OrderItem):
+    def __init__(self, membership, payment_status="Pending"):
+        super().__init__(payment_status)
+        self.__membership = membership
+
+    @property
+    def membership(self):
+        return self.__membership
+
+    def calculate_price(self, user = None):
+        return MembershipPlan[self.__membership.upper()].price
+
+class Booking(OrderItem):
     def __init__(self, status = "Pending"):
+        super().__init__()
         self.__status = status # statuses: Waitlist Confirmed Check-in Completed Cancelled
 
     @property
@@ -60,8 +98,7 @@ class TrainingBooking(Booking):
         else:
             return ""
         
-    @property
-    def price(self):
+    def calculate_price(self, user = None):
         membership_type = self.__member.current_membership
         membership_enum = MembershipPlan[membership_type.upper()]
         trainer_tier = self.__session.trainer.tier
@@ -72,7 +109,6 @@ class TrainingBooking(Booking):
         discount = membership_enum.booking_discount
         discount_price = round(price * (1 - discount), 2)
         return discount_price
-        
 
     def __str__(self):
         if self.__status == "Pending":
@@ -177,11 +213,34 @@ class Session:
             text += f"Training plan: {self.__training_plan}\n"
         text += f"Enrolled: {self.get_enrolled_num()} Max: {self.__max_participants}"
         return text
-    
-class SessionManager:
-    def __init__(self):
+
+class GymClass:
+    __next_id = 1
+
+    def __init__(self, name, detail):
+        self.__class_id = f"CL-{GymClass.__next_id}"
+        GymClass.__next_id += 1
+        self.__name = name
+        self.__detail = detail
         self.__session_list = []
 
+    @property
+    def class_id(self):
+        return self.__class_id
+    
+    @property
+    def info(self):
+        sessions = []
+        for session in self.session_list:
+            sessions.append(session.info)
+
+        return {
+            "Class id": self.__class_id,
+            "Class name": self.__name,
+            "Class detail": self.__detail,
+            "Class session": sessions
+        }
+    
     @property
     def session_list(self):
         return self.__session_list
@@ -220,33 +279,6 @@ class SessionManager:
             if session.session_id == session_id:
                 return session
         return False
-
-class GymClass(SessionManager):
-    __next_id = 1
-
-    def __init__(self, name, detail):
-        super().__init__()
-        self.__class_id = f"CL-{GymClass.__next_id}"
-        GymClass.__next_id += 1
-        self.__name = name
-        self.__detail = detail
-
-    @property
-    def class_id(self):
-        return self.__class_id
-    
-    @property
-    def info(self):
-        sessions = []
-        for session in self.session_list:
-            sessions.append(session.info)
-
-        return {
-            "Class id": self.__class_id,
-            "Class name": self.__name,
-            "Class detail": self.__detail,
-            "Class session": sessions
-        }
     
     def __str__(self):
         text = f"Class name: {self.__name}\nClass id: {self.__class_id}\nSession:\n"
@@ -311,8 +343,7 @@ class LockerBooking(Booking):
             "Status": status_text
         }
     
-    @property
-    def price(self):
+    def calculate_price(self, user = None):
         membership_type = self.__member.current_membership
         membership_enum = MembershipPlan[membership_type.upper()]
         locker_enum = LockerType[self.__locker.type.upper()]
@@ -450,8 +481,9 @@ class Product:
             raise Exception("Not enough stock available")
         self.__amount -= amount
 
-class ProductAmount:
+class ProductAmount(OrderItem):
     def __init__(self, item, amount):
+        super().__init__()
         self.__item = item
         self.__amount = amount
     
@@ -463,10 +495,10 @@ class ProductAmount:
     def amount(self):
         return self.__amount
     
-    def price(self, member = None):
+    def calculate_price(self, user = None):
         price = self.__item.price * self.__amount
-        if member:
-            membership_type = member.current_membership
+        if isinstance(user, Member):
+            membership_type = user.current_membership
             discount = MembershipPlan[membership_type.upper()].product_discount
             return round(price * (1 - discount), 2)
         else:
@@ -561,6 +593,12 @@ class Gym:
         for gym_class in self.__gym_class_list:
             class_list.append(gym_class.info)
         return class_list
+    
+    def get_available_private_sessions(self):
+        trainer_session_list = []
+        for user in self.__user_list:
+            if isinstance(user, Trainer) : trainer_session_list.append(user.session_info)
+        return trainer_session_list
 
     def print_available_classes(self):
         for gym_class in self.__gym_class_list:
@@ -761,7 +799,7 @@ class Gym:
             if not payment:
                 continue
 
-            if payment.status not in ["Paid", "refunded"]:
+            if payment.status not in ["Paid", "Refunded"]:
                 continue
 
             if payment.timestamp is None:
@@ -773,28 +811,23 @@ class Gym:
 
             matched_orders.append(order)
 
-            multiplier = 1 if payment.status == "Paid" else -1
+            if payment.status == "Paid":
+                multiplier = 1
+            else: multiplier = -1
 
             for order_item in order.order_items:
-                item_type = order_item.item_type
-                item_value = order_item.item
-                price = order_item.price(order.user) * multiplier
-
-                if item_type == "NewMembershipType":
+                price = order_item.calculate_price(order.user) * multiplier
+                if isinstance(order_item, NewMembership):
                     revenue_data["Membership"] += price
                     if multiplier > 0:
-                        membership_type_count[item_value] = membership_type_count.get(item_value, 0) + 1
-
-                elif item_type == "DaypassDate":
+                        membership_type_count[order_item.membership] += 1
+                elif isinstance(order_item, DayPass):
                     revenue_data["Daypass"] += price
-
-                elif item_type == "ProductAmount":
+                elif isinstance(order_item, ProductAmount):
                     revenue_data["Product"] += price
-
-                elif item_type == "LockerBooking":
+                elif isinstance(order_item, LockerBooking):
                     revenue_data["Locker"] += price
-
-                elif item_type == "TrainingBooking":
+                elif isinstance(order_item, TrainingBooking):
                     revenue_data["Training"] += price
 
                 total_revenue += price
@@ -931,7 +964,6 @@ class Guest(User):
     def check_current_notifications(self):
         return
 
-    
 class Staff(User):
     __next_id = 1
 
@@ -944,10 +976,9 @@ class Staff(User):
     def staff_id(self):
         return self.__staff_id
 
-class Trainer(Staff, SessionManager):
+class Trainer(Staff):
     def __init__(self, citizen_id, name, age, tier, specialization): #MEM-2023-001
-        Staff.__init__(self, citizen_id, name, age)
-        SessionManager.__init__(self)
+        super().__init__(citizen_id, name, age)
         self.__tier = tier
         self.__specialization = specialization
         self.__session_list = []
@@ -955,6 +986,59 @@ class Trainer(Staff, SessionManager):
     @property
     def tier(self):
         return self.__tier
+    
+    @property
+    def session_list(self):
+        return self.__session_list
+    
+    @property
+    def session_info(self):
+        sessions = []
+        for session in self.session_list:
+            sessions.append(session.info)
+
+        return {
+            "Staff id": self.staff_id,
+            "Name": self.name,
+            "Tier": self.__tier,
+            "Specialization": self.__specialization,
+            "Sessions": sessions
+        }
+    
+    def create_session(self, start, end, date, max_participants, room, trainer = None, gym_class = None):
+        if not room.is_available(start, end, date):
+            raise Exception("Session is overlapping another previous session")
+        if not trainer and not isinstance(self, Trainer):
+            raise Exception("Trainer not provided")
+        if not trainer: trainer = self
+        if max_participants > room.max_people:
+            raise Exception(f"Room can only accommodate {room.max_people} people")
+        session = Session(start, end, date, max_participants, room, trainer, gym_class)
+        self.__session_list.append(session)
+        return session
+    
+    def create_repeating_session(self, start, end, start_date, days_interval, times, max_participants, room, trainer = None, gym_class = None):
+        if not trainer and not isinstance(self, Trainer):
+            raise Exception("Trainer not provided")
+        if not trainer: trainer = self
+        if max_participants > room.max_people:
+            raise Exception(f"Room can only accommodate {room.max_people} people")
+        for time in range(times):
+            date = start_date + timedelta(days=days_interval*time)
+            if not room.is_available(start, end, date):
+                raise Exception("Session is overlapping another previous session")
+            
+            session = Session(start, end, date, max_participants, room, trainer, gym_class)
+            self.__session_list.append(session)
+
+    def view_session(self):
+        pass
+
+    def get_session_by_id(self, session_id):
+        for session in self.__session_list:
+            if session.session_id == session_id:
+                return session
+        return False
 
     def write_training_plan(self, sched_or_mem: Session | Member, text):
         sched_or_mem.set_training_plan(text)
@@ -999,54 +1083,7 @@ class LockerType(Enum):
     NORMAL = 35
     VIP = 70
 
-class OrderItem:
-    def __init__(self, item, type="Auto"):
-        if type == "Auto":
-            if isinstance(item, ProductAmount):
-                type = "ProductAmount"
-            elif isinstance(item, TrainingBooking):
-                type = "TrainingBooking"
-            elif isinstance(item, LockerBooking):
-                type = "LockerBooking"
-            elif isinstance(item, date):
-                type = "DaypassDate"
-            elif item in ["Monthly", "Annual", "Student"]:
-                type = "NewMembershipType"
-        elif type not in ["ProductAmount", "TrainingBooking", "LockerBooking", "DaypassDate", "NewMembershipType"]:
-            raise Exception("type is not 'ProductAmount'|'TrainingBooking'|'LockerBooking'|'DaypassDate'|'NewMembershipType'")
-        self.__type = type
-        self.__item = item
-        self.__price_paid = None
-
-    @property
-    def price_paid(self):
-        return self.__price_paid
-    
-    @property
-    def item_type(self):
-        return self.__type
-
-    @property
-    def item(self):
-        return self.__item
-
-    def price(self, user):
-        if self.__type == "DaypassDate":
-            return 500
-        elif self.__type == "NewMembershipType":
-            return MembershipPlan[self.__item.upper()].price
-        elif self.__type == "ProductAmount":
-            if isinstance(user, Member):
-                return self.__item.price(user)
-            else:
-                return self.__item.price()
-        else:
-            return self.__item.price
-
-    def set_price_paid(self, user):
-        self.__price_paid = self.price(user)
-
-class AbstractOrder:
+class AbstractOrder(ABC):
     __next_id = 1
 
     def __init__(self, user = None):
@@ -1065,7 +1102,7 @@ class AbstractOrder:
     def total_price(self):
         total = 0
         for order_item in self.__order_item_list:
-            total += order_item.price(self.__user)
+            total += order_item.calculate_price(self.__user)
         return total
     
     @property
@@ -1097,9 +1134,8 @@ class AbstractOrder:
     def verify_and_update_all_info(self):
         pass
 
-    @abstractmethod
-    def create_order_item(self):
-        pass
+    def add_order_item(self, order_item):
+        self.__order_item_list.append(order_item)
 
 class Order(AbstractOrder):
     def process(self):
@@ -1107,30 +1143,17 @@ class Order(AbstractOrder):
         self.payment.process()
     
     def verify_and_update_all_info(self):
-        for order_item in self._AbstractOrder__order_item_list:
-            t = order_item._OrderItem__type
-            item = order_item._OrderItem__item
-            user = self._AbstractOrder__user
-            if t == "DaypassDate":
-                user.add_guest_date(item)
-            elif t == "TrainingBooking":
-                item.confirm()
-            elif t == "LockerBooking":
-                item.confirm()
-    
-    def create_order_item(self, item, type="Auto"):
-        self._AbstractOrder__order_item_list.append(OrderItem(item, type))
+        if self.payment.validate():
+            for order_item in self.__order_item_list:
+                order_item.set_price_paid(order_item.calculate_price(self.__user))
 
 class OrderRefund(AbstractOrder):
     def process(self):
         self.payment.set_amount(self.total_price)
-        self.payment.process()
+        self.payment.refund()
 
     def verify_and_update_all_info(self):
-        return
-
-    def create_order_item(self, item, type="Auto"):
-        self._AbstractOrder__order_item_list.append(OrderItem(item, type))
+        self.payment.validate()
 
 class QRCode:
     def __init__(self, transaction_id):
@@ -1177,10 +1200,7 @@ class Payment(ABC):
 
     def set_status(self, status):
         self.__status = status
-
-        if self.status == "Paid" and self.__timestamp_payed is None:
-            self.__timestamp_payed = datetime.now()
-        elif self.status == "refunded" and self.__timestamp_payed is None:
+        if status in ["Paid", "Refunded"]:
             self.__timestamp_payed = datetime.now()
 
     def set_amount(self, amount):
@@ -1209,7 +1229,7 @@ class CashPayment(Payment):
         return False
 
     def refund(self):
-        pass
+        self.set_status("Refunded")
 
 class CreditCardPayment(Payment):
     def __init__(self, card_num, cvv, expiry):
@@ -1232,7 +1252,11 @@ class CreditCardPayment(Payment):
         return False
 
     def refund(self):
-        pass
+        result = PaymentGateway.refund(self.__payment_gateway_transaction_id, self.amount)
+        if result:
+            self.set_status("Refunded")
+        else:
+            raise Exception("Error")
 
 class QRPayment(Payment):
     def __init__(self):
@@ -1251,10 +1275,12 @@ class QRPayment(Payment):
         result = PaymentGateway.validate_qr_payment(self.payment_gateway_transaction_id)
         if result:
             self.set_status("Paid")
-        else:
-            raise Exception("Error")
+            return True
+        return False
 
     def refund(self):
-        pass
-
-
+        result = PaymentGateway.refund(self.__payment_gateway_transaction_id, self.amount)
+        if result:
+            self.set_status("Refunded")
+        else:
+            raise Exception("Error")

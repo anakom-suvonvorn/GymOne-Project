@@ -83,3 +83,5 @@ def set_member_status(body: dict, gym = Depends(get_gym)) -> dict:
         return {"success": f"{member_id} status has been succesfully set to {status}"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# TODO: create class and session (which also assigns a room and trainer to it), cancel session
