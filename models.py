@@ -12,6 +12,14 @@ class OrderItem(ABC):
     @property
     def price_paid(self):
         return self.__price_paid
+    
+    @property
+    def item_info(self):
+        return {
+            "calculate_price (no member discount)" : self.calculate_price(),
+            "price paid": self.__price_paid,
+            "order item text": f"{self}"
+        }
 
     @abstractmethod
     def calculate_price(self, user = None):
@@ -29,6 +37,9 @@ class DayPass(OrderItem):
     def calculate_price(self, user = None):
         return 500
     
+    def __str__(self):
+        return "DayPass"
+    
 class NewMembership(OrderItem):
     def __init__(self, membership, payment_status="Pending"):
         super().__init__(payment_status)
@@ -40,6 +51,9 @@ class NewMembership(OrderItem):
 
     def calculate_price(self, user = None):
         return MembershipPlan[self.__membership.upper()].price
+    
+    def __str__(self):
+        return f"NewMembership {self.__membership}"
 
 class Booking(OrderItem):
     def __init__(self, status = "Pending"):
@@ -74,6 +88,10 @@ class TrainingBooking(Booking):
         return self.__session
     
     @property
+    def training_log(self):
+        return self.__training_log
+    
+    @property
     def locker_booking(self):
         return self.__locker_booking
 
@@ -93,10 +111,14 @@ class TrainingBooking(Booking):
     def notification(self):
         if self.__session.status == "Cancelled":
             return f"[session id: {self.__session.session_id}] Has been cancelled"
-        elif self.__status == "Pending":
+        elif self.status == "Pending":
             return "Pending. Please Pay to Confirm Booking"
-        else:
-            return ""
+        elif self.status == "Confirmed":
+            difference = self.__session.start - datetime.now()
+            if difference < 0: return ""
+            elif difference.total_seconds() / 3600 <= 2: return difference.total_seconds() / 60
+            elif difference.days <= 2: return difference.total_seconds() / 3600
+            else: return difference.days
         
     def calculate_price(self, user = None):
         membership_type = self.__member.current_membership
@@ -111,7 +133,7 @@ class TrainingBooking(Booking):
         return discount_price
 
     def __str__(self):
-        if self.__status == "Pending":
+        if self.status == "Pending":
             status_text = "Pending. Please Pay to Confirm Booking"
         else:
             status_text = self.__status
@@ -583,10 +605,10 @@ class Gym:
         item = Product(name, amount, price)
         self.__item_list.append(item)
     
-    # def create_manager(self, citizen_id, name, age, tier, specialization):
-    #     manager = Manager(citizen_id, name, age, tier, specialization)
-    #     self.__user_list.append(manager)
-    #     return manager
+    def create_manager(self, citizen_id, name, age):
+        manager = Manager(citizen_id, name, age)
+        self.__user_list.append(manager)
+        return manager
     
     def get_available_classes(self):
         class_list = []
@@ -633,6 +655,18 @@ class Gym:
             if order.order_id == order_id:
                 return order
         raise Exception("order not found")
+    
+    def get_order_by_id(self, member_id = None, order_id = None, refund = False):
+        if order_id:
+            for order in self.__order_list:
+                pass
+
+        member = self.get_member_by_id(member_id)
+        for order in member.order_list:
+            if order.status == "Pending" and isinstance(order, OrderRefund) == refund:
+                return order
+        order = self.create_order(member, refund)
+        return order
 
     def get_user_by_citizen_id(self, citizen_id):
         for user in self.__user_list:
@@ -640,7 +674,7 @@ class Gym:
                 return user
         raise Exception("user not found")
     
-    def create_order(self, user = None, new_membership_type = None, daypass_date = None, refund = False):
+    def create_order(self, user = None, refund = False):
         if refund:
             order = OrderRefund(user)
         else:
@@ -650,18 +684,6 @@ class Gym:
             user.add_order(order)
         return order
     
-    # def create_transaction(self, user = None, new_membership_type = None, daypass_date = None, refund = False):
-    #     transaction = Transaction(user = user, daypass_date=daypass_date, refund=refund)
-    #     self.__transaction_list.append(transaction)
-    #     if isinstance(user, Member):
-    #         user.add_transaction(transaction)
-    #     return transaction
-    
-    # def create_or_add_to_transaction(self, user):
-    #     for transaction in self.__transaction_list:
-    #         if transaction.user == user and transaction.status == "Pending":
-    #             transaction
-    
     def enroll_member(self, member, session_id):
         session = self.get_session_by_id(session_id)
         session.enroll_member(member)
@@ -670,6 +692,8 @@ class Gym:
         member = self.get_member_by_id(member_id)
         session = self.get_session_by_id(session_id)
         booking = session.enroll_member(member)
+        order = self.get_order_by_member_id(member_id)
+        order.add_order_item(booking)
 
     def refund(self, member, refund_amount: float):
         refund_order = self.create_order(member, refund=True)
@@ -734,8 +758,10 @@ class Gym:
                 self.__user_list[idx] = member
                 print(f"User with citizen_id: {user.citizen_id} has been replaced by Member with {member.current_membership} membership")
 
-    def process_order(self, order_id): 
-        self.get_order_by_id(order_id)
+    def pay_order_credit_card(self, card_num, cvv, expiry, member_id, order_id):
+        order = self.get_order_by_id(member_id, order_id)
+
+
 
     # def pay_cash(self, user):
     #     for transaction in self.__transaction_list:
@@ -760,15 +786,6 @@ class Gym:
     #                 self.replace_user_with_member(result)
     #                 return True
     #             return result
-            
-    # def pay_card(self, user):
-    #     for transaction in self.__transaction_list:
-    #         if transaction.user == user and transaction.status == "Pending":
-    #             new_member = transaction.pay_card()
-    #             if isinstance(new_member, Member):
-    #                 self.replace_user_with_member(new_member)
-    #             return
-    #     raise Exception("Transaction of user not found")
 
     def gather_report(self, month, year):
         month_now = datetime.now().month
@@ -869,7 +886,7 @@ class User(ABC):
         self.__guest_date_list.append(date)
     
     @abstractmethod
-    def check_current_notifications(self):
+    def show_notifications(self):
         pass
 
 class Member(User):
@@ -896,16 +913,14 @@ class Member(User):
     @property
     def current_membership(self):
         return self.__current_membership
+    
+    @property
+    def order_list(self):
+        return tuple(self.__order_list)
 
-    def get_pending_bookings(self):
-        pending_bookings = []
-        for training_booking in self.__training_booking_list:
-            if training_booking.status == "Pending":
-                pending_bookings.append(training_booking)
-        for locker_booking in self.__locker_booking_list:
-            if locker_booking.status == "Pending":
-                pending_bookings.append(locker_booking)
-        return pending_bookings
+    @property
+    def order_info(self):
+        return [order.info for order in self.__order_list]
 
     def set_training_plan(self, text):
         self.__training_plan = text
@@ -944,10 +959,14 @@ class Member(User):
                 return booking
         return None
 
-    def check_current_notifications(self):
+    def show_notifications(self):
+        notifications = []
         for training_booking in self.__training_booking_list:
-            print(training_booking.notification, end="")
-        # return super().check_current_notifications()
+            notifications.append(training_booking.notification)
+        return notifications
+    
+    def check_self_info(self):
+        return self.__training_plan, [f"{training_booking.training_log} [{training_booking.session.date}]" for training_booking in self.__training_booking_list]
 
 class Guest(User):
     __next_id = 1
@@ -961,7 +980,7 @@ class Guest(User):
     def guest_id(self):
         return self.__guest_id
 
-    def check_current_notifications(self):
+    def show_notifications(self):
         return
 
 class Staff(User):
@@ -1043,8 +1062,8 @@ class Trainer(Staff):
     def write_training_plan(self, sched_or_mem: Session | Member, text):
         sched_or_mem.set_training_plan(text)
 
-    def check_current_notifications(self):
-        return super().check_current_notifications()
+    def show_notifications(self):
+        return super().show_notifications()
 
 class Manager(Staff):
     def __init__(self, citizen_id, name, age): #MEM-2023-001
@@ -1120,6 +1139,15 @@ class AbstractOrder(ABC):
     @property
     def status(self):
         return self.__status
+    
+    @property
+    def info(self):
+        return {
+            "order_id": self.__order_id,
+            "status": self.__status,
+            "total": self.__payment.amount if self.__status == "Paid" else self.total_price,
+            "order_items": [order_item.item_info for order_item in self.__order_item_list]
+        }
     
     def set_payment(self, payment):
         if not isinstance(payment, (CashPayment, CreditCardPayment, QRPayment)):
