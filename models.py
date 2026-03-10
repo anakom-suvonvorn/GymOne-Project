@@ -56,6 +56,12 @@ class Booking(OrderItem):
     def cancel(self):
         self.__status = "Cancelled"
 
+    def check_in(self):
+        self.__status = "Check-in"
+
+    def late_check_in(self):
+        self.__status = "Late Check-in"
+
 class TrainingBooking(Booking):
 
     def __init__(self, member, session, status="Pending"):
@@ -734,6 +740,33 @@ class Gym:
                 self.__user_list[idx] = member
                 print(f"User with citizen_id: {user.citizen_id} has been replaced by Member with {member.current_membership} membership")
 
+    def check_in_member(self, member_id):
+        member = self.get_member_by_id(member_id)
+
+        if member.member_status != "Active":
+            raise Exception(f"Cannot check-in — member status is '{member.member_status}'")
+
+        booking = member.get_confirmed_booking_today()
+        if booking is None:
+            raise Exception("No confirmed booking found for today")
+
+        now = datetime.now()
+        minutes_late = (now - booking.session.start).total_seconds() / 60
+
+        if minutes_late > 15:
+            booking.late_check_in()
+            return {
+                "status": "Late Check-in",
+                "session_id": booking.session.session_id,
+                "minutes_late": round(minutes_late)
+            }
+        else:
+            booking.check_in()
+            return {
+                "status": "Check-in",
+                "session_id": booking.session.session_id
+            }
+
     def process_order(self, order_id): 
         self.get_order_by_id(order_id)
 
@@ -896,6 +929,13 @@ class Member(User):
     @property
     def current_membership(self):
         return self.__current_membership
+    
+    @property
+    def member_status(self):
+        return self.__status
+
+    def activate(self):
+        self.__status = "Active"
 
     def get_pending_bookings(self):
         pending_bookings = []
@@ -941,6 +981,13 @@ class Member(User):
     def find_booking_by_session_id(self, session_id: str):
         for booking in self.__training_booking_list:
             if booking.session.session_id == session_id:
+                return booking
+        return None
+    
+    def get_confirmed_booking_today(self):
+        today = date.today()
+        for booking in self.__training_booking_list:
+            if booking.status == "Confirmed" and booking.session.date == today:
                 return booking
         return None
 
