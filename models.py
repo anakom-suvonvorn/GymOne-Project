@@ -56,12 +56,6 @@ class TrainingBooking(Booking):
             return f"[session id: {self.__session.session_id}] Has been cancelled"
         elif self.__status == "Pending":
             return "Pending. Please Pay to Confirm Booking"
-        elif self.__status == "Waitlist":
-            queue_count = self.__session.get_queue_count(self)
-            if queue_count == 0:
-                return f"[session id: {self.__session.session_id}] Currently the next booking in line\n"
-            else:
-                return f"[session id: {self.__session.session_id}] There's currently {queue_count} queue before this\n"
         else:
             return ""
         
@@ -148,14 +142,6 @@ class Session:
     def set_training_plan(self, text):
         self.__training_plan = text
 
-    def get_queue_count(self, training_booking):
-        queue_count = 0
-        for booking in self.__training_booking_list:
-            if booking == training_booking:
-                return queue_count
-            elif booking.status == "Waitlist":
-                queue_count+=1
-
     def get_enrolled_num(self):
         participants = 0
         for training_booking in self.__training_booking_list:
@@ -168,16 +154,12 @@ class Session:
 
     def enroll_member(self, member):
         participants = self.get_enrolled_num()
-
         if participants >= self.__max_participants:
-            # Waitlist > will update to Pending if next time that check/action/other cancel/etc. and there's free
-            booking = TrainingBooking(member, self, "Waitlist")
-        else:
-            booking = TrainingBooking(member, self)
-
+            raise Exception("Session is full. Please wait until someone cancels.")
+        
+        booking = TrainingBooking(member, self)
         self.__training_booking_list.append(booking)
         member.add_booking(booking)
-        
         return booking
     
     def is_available(self, new_start, new_end, new_date):
@@ -643,6 +625,62 @@ class Gym:
         session = self.get_session_by_id(session_id)
         booking = session.enroll_member(member)
 
+    def refund(self, member, refund_amount: float):
+        refund_order = self.create_order(member, refund=True)
+        payment = CashPayment()
+        payment.set_amount(refund_amount)
+        refund_order.set_payment(payment)
+        refund_order.process()
+        return refund_order
+
+    def cancel_booking(self, member_id: str, session_id: str):
+        member = self.get_member_by_id(member_id)
+        session = self.get_session_by_id(session_id)
+        booking = member.find_booking_by_session_id(session_id)
+
+        if booking is None:
+            raise Exception("Booking not found for session" + session_id)
+        
+        status = booking.status
+
+        if status in ("Cancelled", "Completed"):
+            raise Exception(f"Cannot cancel — current status: {status}")
+        
+        if status == "Pending":
+            booking.cancel()
+            return {
+                "cancelled": True,
+                "refund": 0.0,
+                "message": "Cancelled (Pending) — no refund, not yet paid"
+            }
+        
+        hours_until = (session.start - datetime.now()).total_seconds() / 3600
+
+        if hours_until <= 0:
+            raise Exception("Cannot cancel — session has already started")
+
+        if hours_until < 4:
+            booking.cancel()
+            return {
+            "cancelled": True,
+            "refund": 0.0,
+            "message": f"Cancelled — no refund ({hours_until:.1f} hrs notice, need >= 4)"
+            }
+        
+        refund_amount = booking.price
+        booking.cancel()
+        self.refund(member, refund_amount)
+        return {
+            "cancelled": True,
+            "refund": refund_amount,
+            "message": (
+                f"Cancelled — Refund {refund_amount:.2f} THB"
+                f" [{session.get_session_type()} |"
+                f" Trainer: {session.trainer.tier} |"
+                f" Membership: {member.current_membership}]"
+                )
+            }
+
     def replace_user_with_member(self, member):
         citizen_id = member.citizen_id
         for idx, user in enumerate(self.__user_list):
@@ -781,6 +819,12 @@ class Member(User):
     
     def enroll_session(self, gym, session_id):
         gym.enroll_member(self,session_id)
+
+    def find_booking_by_session_id(self, session_id: str):
+        for booking in self.__training_booking_list:
+            if booking.session.session_id == session_id:
+                return booking
+        return None
 
     def check_current_notifications(self):
         for training_booking in self.__training_booking_list:
@@ -959,13 +1003,14 @@ class Order(AbstractOrder):
 
 class OrderRefund(AbstractOrder):
     def process(self):
-        self.payment.refund()
-    
+        self.payment.set_amount(self.total_price)
+        self.payment.process()
+
     def verify_and_update_all_info(self):
         return
-    
-    def create_order_item(self, item, type="auto"):
-        self.__order_item_list.append(OrderItem(item, type))
+
+    def create_order_item(self, item, type="Auto"):
+        self._AbstractOrder__order_item_list.append(OrderItem(item, type))
 
 class QRCode:
     def __init__(self, transaction_id):
