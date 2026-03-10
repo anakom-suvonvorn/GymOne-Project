@@ -9,14 +9,14 @@ router = APIRouter(
 # NOTE: this whole file is just mainly for structure and knowing what to do
 # We can change the function call name or how it works inside or however we like it to be
 
-@router.get("/showclass")
+@router.get("/showclass") ########
 def show_available_classes(gym = Depends(get_gym)):
     classes = gym.get_available_classes()
     return {
         "classes": classes,
     }
 
-@router.get("/showprivate")
+@router.get("/showprivate") #########
 def show_available_private_sessions(gym = Depends(get_gym)):
     private_sessions = gym.get_available_private_sessions()
     return {
@@ -34,7 +34,7 @@ def show_notifications(member_id: str, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/showbooking/{member_id}")
+@router.get("/showbooking/{member_id}") ###########
 def show_current_bookings(member_id: str, gym = Depends(get_gym)):
     try:
         member = gym.get_member_by_id(member_id)
