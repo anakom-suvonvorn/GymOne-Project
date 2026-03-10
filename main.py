@@ -7,11 +7,7 @@ from routers.members import router as member_router
 from routers.trainers import router as trainer_router
 from routers.receptionists import router as receptionist_router
 from routers.managers import router as manager_router
-
-gym = Gym("my gym", "1/45 bangkok thailand")
-
-def get_gym():
-    return gym
+from database import gym
 
 def create_stuff():
     # item stuff
