@@ -187,6 +187,7 @@ class Session:
         self.__training_plan = ""
         self.__training_log = ""
         self.__training_booking_list = []
+        self.__notification = ""
 
     @property
     def start(self):
@@ -219,6 +220,10 @@ class Session:
     @property
     def status(self):
         return self.__status
+    
+    @property
+    def notification(self):
+        return self.__notification
     
     @property
     def info(self):
@@ -727,6 +732,26 @@ class Gym:
         self.__user_list.append(receptionist)
         return receptionist
     
+    def get_staff_info(self):
+        staff_info = []
+        for user in self.__user_list:
+            if isinstance(user, Trainer) or isinstance(user, Manager) or isinstance(user, Receptionist):
+                staff_info.append({
+                    "name": user.name,
+                    "staff id": user.staff_id,
+                    "role": user.__class__.__name__
+                })
+        return staff_info
+    
+    def get_stock_info(self):
+        stock_info = {}
+        for item in self.__item_list:
+            stock_info[item.name] = {
+                "amount": item.amount,
+                "price": item.price
+            }
+        return stock_info
+    
     def get_available_classes(self):
         class_list = []
         for gym_class in self.__gym_class_list:
@@ -807,6 +832,12 @@ class Gym:
             if user.citizen_id == citizen_id:
                 return user
         raise Exception("user not found")
+    
+    def get_staff_by_id(self, staff_id):
+        for user in self.__user_list:
+            if hasattr(user, "staff_id") and user.staff_id == staff_id:
+                return user
+        raise Exception("staff not found")
     
     def create_order(self, user = None, refund = False):
         if refund:
@@ -1287,6 +1318,15 @@ class Trainer(Staff):
             if session.session_id == session_id:
                 return session
         return False
+    
+    def get_notifications(self):
+        notifications = []
+        now = date.today()
+        limit = now + timedelta(hours=2)
+        for session in self.__session_list:
+            if limit >= session.date >= now:
+                notifications.append(session.notification)
+        return notifications
 
     def write_training_plan(self, sched_or_mem: Session | Member, text):
         sched_or_mem.set_training_plan(text)

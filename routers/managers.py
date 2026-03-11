@@ -96,3 +96,23 @@ def set_member_status(body: dict, gym = Depends(get_gym)) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
 
 # TODO: create class and session (which also assigns a room and trainer to it), cancel session
+
+@router.get("/getstockinfo", description="Get the current stock of all products in the gym")
+def get_stock_info(gym = Depends(get_gym)):
+    try:
+        stock = gym.get_stock_info()
+        return {
+            "stock": stock,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+@router.get("/getstaffinfo", description="Get info of all staff in the gym")
+def get_staff_info(gym = Depends(get_gym)):
+    try:
+        staff = gym.get_staff_info()
+        return {
+            "staff": staff,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
