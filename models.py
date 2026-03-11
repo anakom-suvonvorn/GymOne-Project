@@ -13,10 +13,9 @@ class OrderItem(ABC):
     def price_paid(self):
         return self.__price_paid
     
-    @property
-    def item_info(self):
+    def item_info(self, user = None):
         return {
-            "calculate_price (no member discount)" : self.calculate_price(),
+            "calculate_price" : self.calculate_price(user),
             "price paid": self.__price_paid,
             "order item text": f"{self}"
         }
@@ -711,17 +710,24 @@ class Gym:
                 return order
         raise Exception("order not found")
     
-    def get_order_by_id(self, member_id = None, order_id = None, refund = False):
-        if order_id:
-            for order in self.__order_list:
-                pass
-
+    def get_order_by_member_id(self, member_id, refund = False):
         member = self.get_member_by_id(member_id)
         for order in member.order_list:
             if order.status == "Pending" and isinstance(order, OrderRefund) == refund:
                 return order
         order = self.create_order(member, refund)
         return order
+    
+    def get_booking_by_id(self, booking_id):
+        for user in self.__user_list:
+            if not isinstance(user, Member):
+                continue
+            for training_booking in user.__training_booking_list:
+                if training_booking.booking_id == booking_id:
+                    return training_booking
+            for locker_booking in user.__locker_booking_list:
+                if locker_booking.booking_id == locker_booking:
+                    return locker_booking
 
     def get_user_by_citizen_id(self, citizen_id):
         for user in self.__user_list:
@@ -739,9 +745,22 @@ class Gym:
             user.add_order(order)
         return order
     
-    def enroll_member(self, member, session_id):
-        session = self.get_session_by_id(session_id)
-        session.enroll_member(member)
+    def find_and_remove_item_from_order(self, item):
+        for order in self.__order_list:
+            if order.has_item(item):
+                order.remove_item(item)
+                return
+        raise Exception("item doesn't exist")
+    
+    def get_order_with_item(self, item):
+        for order in self.__order_list:
+            if order.has_item(item):
+                return order
+        raise Exception("item doesn't exist")
+    
+    # def enroll_member(self, member, session_id):
+    #     session = self.get_session_by_id(session_id)
+    #     session.enroll_member(member)
 
     def enroll_member_by_id(self, member_id, session_id):
         member = self.get_member_by_id(member_id)
@@ -750,21 +769,27 @@ class Gym:
         order = self.get_order_by_member_id(member_id)
         order.add_order_item(booking)
 
-    def refund(self, member, refund_amount: float):
-        refund_order = self.create_order(member, refund=True)
-        payment = CashPayment()
-        payment.set_amount(refund_amount)
+    def refund_booking(self, booking):
+        refund_order = self.create_order(booking.member, refund=True)
+        original_order = self.get_order_with_item(booking)
+        payment = CashPayment() # need to get the original payment type and gateway transaction id
         refund_order.set_payment(payment)
+        refund_order.add_order_item(booking)
         refund_order.process()
         return refund_order
 
-    def cancel_booking(self, member_id: str, session_id: str):
-        member = self.get_member_by_id(member_id)
-        session = self.get_session_by_id(session_id)
-        booking = member.find_booking_by_session_id(session_id)
+    def cancel_booking(self, booking_id: str):
+        booking = self.get_booking_by_id(booking_id)
+        if isinstance(booking, LockerBooking):
+            booking.cancel()
+            return {
+                "cancelled": True,
+                "refund": 0.0,
+                "message": "Cancelled — no refund for locker bookings"
+            }
 
         if booking is None:
-            raise Exception("Booking not found for session" + session_id)
+            raise Exception("Booking not found")
         
         status = booking.status
 
@@ -773,13 +798,14 @@ class Gym:
         
         if status == "Pending":
             booking.cancel()
+            self.find_and_remove_item_from_order(booking)
             return {
                 "cancelled": True,
                 "refund": 0.0,
                 "message": "Cancelled (Pending) — no refund, not yet paid"
             }
         
-        hours_until = (session.start - datetime.now()).total_seconds() / 3600
+        hours_until = (booking.session.start - datetime.now()).total_seconds() / 3600
 
         if hours_until <= 0:
             raise Exception("Cannot cancel — session has already started")
@@ -792,29 +818,19 @@ class Gym:
             "message": f"Cancelled — no refund ({hours_until:.1f} hrs notice, need >= 4)"
             }
         
-        refund_amount = booking.price
-        booking.cancel()
-        self.refund(member, refund_amount)
+        self.refund_booking(booking)
+        refund_amount = booking.price_paid
         return {
             "cancelled": True,
             "refund": refund_amount,
-            "message": (
-                f"Cancelled — Refund {refund_amount:.2f} THB"
-                f" [{session.get_session_type()} |"
-                f" Trainer: {session.trainer.tier} |"
-                f" Membership: {member.current_membership}]"
-                )
             }
-
-    def replace_user_with_member(self, member):
-        citizen_id = member.citizen_id
-        for idx, user in enumerate(self.__user_list):
-            if user.citizen_id == citizen_id:
-                self.__user_list[idx] = member
-                print(f"User with citizen_id: {user.citizen_id} has been replaced by Member with {member.current_membership} membership")
 
     def pay_order_credit_card(self, card_num, cvv, expiry, member_id, order_id):
         order = self.get_order_by_id(member_id, order_id)
+        # something
+        
+    def process_order(self, order_id): 
+        self.get_order_by_id(order_id)
 
 
     def check_in_member(self, member_id):
@@ -845,8 +861,7 @@ class Gym:
                 "minutes_late": round(minutes_late)
             }
         
-    def process_order(self, order_id): 
-        self.get_order_by_id(order_id)
+    
 
     # def pay_cash(self, user):
     #     for transaction in self.__transaction_list:
@@ -871,6 +886,18 @@ class Gym:
     #                 self.replace_user_with_member(result)
     #                 return True
     #             return result
+
+    def replace_user_with_member(self, member):
+        citizen_id = member.citizen_id
+        for idx, user in enumerate(self.__user_list):
+            if user.citizen_id == citizen_id:
+                self.__user_list[idx] = member
+                print(f"User with citizen_id: {user.citizen_id} has been replaced by Member with {member.current_membership} membership")
+
+    def change_membership(self, member_id, new_membership_type):
+        member = self.get_member_by_id(member_id)
+        order = self.get_order_by_member_id(member_id)
+        order.add_order_item(NewMembership(new_membership_type))
 
     def gather_report(self, month, year):
         month_now = datetime.now().month
@@ -1041,8 +1068,8 @@ class Member(User):
             "locker_booking" : locker_bookings
         }
     
-    def enroll_session(self, gym, session_id):
-        gym.enroll_member(self,session_id)
+    # def enroll_session(self, gym, session_id):
+    #     gym.enroll_member(self,session_id)
 
     def find_booking_by_session_id(self, session_id: str):
         for booking in self.__training_booking_list:
@@ -1244,13 +1271,25 @@ class AbstractOrder(ABC):
             "order_id": self.__order_id,
             "status": self.__status,
             "total": self.__payment.amount if self.__status == "Paid" else self.total_price,
-            "order_items": [order_item.item_info for order_item in self.__order_item_list]
+            "order_items": [order_item.item_info(self.__user) for order_item in self.__order_item_list]
         }
+
+    def has_item(self, order_item_find):
+        for order_item in self.__order_item_list:
+            if order_item == order_item_find:
+                return True
+        return False
+    
+    def remove_item(self, item):
+        try:
+            self.__order_item_list.remove(item)
+        except ValueError:
+            print(f"Error: {item} not found in the order.")
     
     def set_payment(self, payment):
         if not isinstance(payment, (CashPayment, CreditCardPayment, QRPayment)):
             raise Exception("Not a valid payment type")
-        self.__payment = payment 
+        self.__payment = payment
     
     @abstractmethod
     def process(self):
