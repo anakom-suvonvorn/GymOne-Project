@@ -486,11 +486,18 @@ class Room:
     #         self.__equipment_list.append()
 
 class Product:
+    __next_id = 1
+
     def __init__(self, name, amount, price):
-        self.__item_id = "todo"
+        self.__item_id = f"PRD-{Product.__next_id:03d}"
+        Product.__next_id += 1
         self.__name = name
         self.__amount = amount
         self.__price = price
+
+    @property
+    def item_id(self):
+        return self.__item_id
 
     @property
     def name(self):
@@ -592,6 +599,19 @@ class Gym:
         self.__user_list.append(trainer)
         return trainer
     
+    def apply_new_member(self, name, citizen_id, birth_date, membership_type):
+        member = Member(citizen_id, name, birth_date)
+        self.__user_list.append(member)
+        order = self.create_order(member)
+        order.add_order_item(NewMembership(membership_type))
+        return member.member_id
+    
+    def change_memberhsip(self, member_id, new_membership_type):
+        member = self.get_member_by_id(member_id)
+        order = self.create_order(member)
+        order.add_order_item(NewMembership(new_membership_type))
+        return order
+
     def approve_daypass(self, citizen_id, name, birth_date):
         try:
             user = self.get_user_by_citizen_id(citizen_id)
@@ -612,6 +632,28 @@ class Gym:
     def create_item(self, name, amount, price):
         item = Product(name, amount, price)
         self.__item_list.append(item)
+
+    def sell_product(self, product_id, amount):
+        for item in self.__item_list:
+            if item.name == product_id:
+                item.sell_stock(amount)
+                order = self.create_order()
+                order.add_order_item(ProductAmount(item, amount))
+                return order
+        raise Exception(f"Product '{product_id}' not found")
+
+    def reserve_locker(self, member_id, is_vip):
+        member = self.get_member_by_id(member_id)
+        locker_type = "VIP" if is_vip else "Normal"
+        start = datetime.now()
+        end = start + timedelta(hours=2)  # default จองได้ 2 ชั่วโมง
+        for room in self.__room_list:
+            try:
+                locker_booking = room.reserve_locker(locker_type, member, start, end, "Pending")
+                return locker_booking
+            except:
+                continue
+        raise Exception("No lockers available")
     
     # def create_manager(self, citizen_id, name, birth_date, tier, specialization):
     #     manager = Manager(citizen_id, name, birth_date, tier, specialization)

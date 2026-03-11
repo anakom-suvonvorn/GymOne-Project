@@ -36,7 +36,7 @@ def check_in_member(body: dict, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/applynewmember")
+@router.post("/applynewmember") #############
 def apply_new_member(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         name = body["name"]
@@ -51,7 +51,7 @@ def apply_new_member(body: dict, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/changemembership")
+@router.post("/changemembership") ###############
 def change_membership(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         member_id = body["member_id"]
@@ -63,7 +63,7 @@ def change_membership(body: dict, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/sellproduct")
+@router.post("/sellproduct") ###########
 def sell_product(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         product_id = body["product_id"]
