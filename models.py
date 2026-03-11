@@ -4,6 +4,8 @@ from enum import Enum
 from os import name
 import textwrap
 
+from paymentgateway import payment_gateway, QRCode
+
 class OrderItem(ABC):
     def __init__(self, payment_status = "Pending"):
         self.__price_paid = None
@@ -19,14 +21,20 @@ class OrderItem(ABC):
             "price paid": self.__price_paid,
             "order item text": f"{self}"
         }
+    
+    def set_price_paid(self, amount):
+        self.__price_paid = amount
+
+    def set_payment_status(self, status):
+        self.__payment_status = status
 
     @abstractmethod
     def calculate_price(self, user = None):
         pass
 
-    def set_price_paid(self, amount):
-        self.__price_paid = amount
-        self.__payment_status = "Paid"
+    @abstractmethod
+    def set_paid(self, amount):
+        pass
 
 class DayPass(OrderItem):
     def __init__(self, payment_status="Pending"):
@@ -35,6 +43,10 @@ class DayPass(OrderItem):
     
     def calculate_price(self, user = None):
         return 500
+    
+    def set_paid(self, amount):
+        self.set_price_paid(amount)
+        self.set_payment_status("Paid")
     
     def __str__(self):
         return "DayPass"
@@ -50,6 +62,10 @@ class NewMembership(OrderItem):
 
     def calculate_price(self, user = None):
         return MembershipPlan[self.__membership.upper()].price
+    
+    def set_paid(self, amount):
+        self.set_price_paid(amount)
+        self.set_payment_status("Paid")
     
     def __str__(self):
         return f"NewMembership {self.__membership}"
@@ -136,12 +152,18 @@ class TrainingBooking(Booking):
         discount = membership_enum.booking_discount
         discount_price = round(price * (1 - discount), 2)
         return discount_price
+    
+    def set_paid(self, amount):
+        self.confirm()
+        self.set_price_paid(amount)
+        self.set_payment_status("Paid")
 
     def __str__(self):
         if self.status == "Pending":
             status_text = "Pending. Please Pay to Confirm Booking"
         else:
-            status_text = self.__status
+            status_text = self.status 
+            
         text = f"session id: {self.__session.session_id} Citizen id: {self.__member.citizen_id} Class date: {self.__session.date} Status: {status_text}"
         return text
 
@@ -181,6 +203,10 @@ class Session:
     @property
     def date(self):
         return self.__date
+    
+    @property
+    def max_participants(self):
+        return self.__max_participants
     
     @property
     def room(self):
@@ -259,7 +285,10 @@ class GymClass:
     def info(self):
         sessions = []
         for session in self.session_list:
-            sessions.append(session.info)
+            if isinstance(session, Session): pass
+            participants = session.get_enrolled_num()
+            if session.date >= date.today() and participants < session.max_participants:
+                sessions.append(session.info)
 
         return {
             "Class id": self.__class_id,
@@ -385,6 +414,11 @@ class LockerBooking(Booking):
 
     def is_time_conflict(self, start, end): # 7-10 9-12 > 7<12 true, 9<10 true
         return self.__start < end and start < self.__end
+    
+    def set_paid(self, amount):
+        self.confirm()
+        self.set_price_paid(amount)
+        self.set_payment_status("Paid")
     
     def __str__(self):
         if self.status == "Pending":
@@ -516,21 +550,21 @@ class Product:
         self.__amount -= amount
 
 class ProductAmount(OrderItem):
-    def __init__(self, item, amount):
+    def __init__(self, product, amount):
         super().__init__()
-        self.__item = item
+        self.__product = product
         self.__amount = amount
     
     @property
-    def item(self):
-        return self.__item
+    def product(self):
+        return self.__product
     
     @property
     def amount(self):
         return self.__amount
     
     def calculate_price(self, user = None):
-        price = self.__item.price * self.__amount
+        price = self.__product.price * self.__amount
         if isinstance(user, Member):
             membership_type = user.current_membership
             discount = MembershipPlan[membership_type.upper()].product_discount
@@ -538,23 +572,10 @@ class ProductAmount(OrderItem):
         else:
             return price
         
-class PaymentGateway:
-    __next_id = 1
-
-    def __init__(self):
-        pass
-
-    def create_qr(amount):
-        return QRCode(f"GateWayBank-{PaymentGateway.__next_id}")
-    
-    def validate_qr_payment(transaction_id):
-        return True
-
-    def pay_card(card_num, cvv, expiry, amount):
-        return f"GateWayBank-{PaymentGateway.__next_id}"
-    
-    def refund(transaction_id, amount):
-        return True
+    def set_paid(self, amount):
+        self.__product.sell_stock(self.__amount)
+        self.set_price_paid(amount)
+        self.set_payment_status("Paid")
     
 class Gym:
     def __init__(self, name, location):
@@ -566,7 +587,6 @@ class Gym:
         self.__gym_class_list = []
         self.__order_list = []
         self.__payment_list = []
-        self.__payment_gateway = PaymentGateway()
 
     @property
     def payment(self):
@@ -772,8 +792,11 @@ class Gym:
     def refund_booking(self, booking):
         refund_order = self.create_order(booking.member, refund=True)
         original_order = self.get_order_with_item(booking)
-        payment = CashPayment() # need to get the original payment type and gateway transaction id
-        refund_order.set_payment(payment)
+        payment_type = type(original_order.payment)
+        new_payment = payment_type()
+        if isinstance(new_payment, Payment): pass
+        new_payment.set_payment_gateway_transaction_id(original_order.payment.payment_gateway_transaction_id)
+        refund_order.set_payment(new_payment)
         refund_order.add_order_item(booking)
         refund_order.process()
         return refund_order
@@ -825,13 +848,43 @@ class Gym:
             "refund": refund_amount,
             }
 
-    def pay_order_credit_card(self, card_num, cvv, expiry, member_id, order_id):
-        order = self.get_order_by_id(member_id, order_id)
-        # something
+    def pay_order_credit_card(self, card_num, cvv, expiry, order_id):
+        order = self.get_order_by_id(order_id)
+        order.set_payment(CreditCardPayment(card_num, cvv, expiry))
+        order.process()
+        result = order.verify_and_update_all_info()
+        if result:
+            return {
+                "success": f"Successfully payed {order.payment.amount} for order_id: {order.order_id}"
+            }
         
-    def process_order(self, order_id): 
-        self.get_order_by_id(order_id)
+    def pay_order_qr(self, order_id):
+        order = self.get_order_by_id(order_id)
+        # if isinstance(order, Order): pass
+        order.set_payment(QRPayment())
+        order.process()
+        return {
+            "success": f"Created QRcode with amount {order.payment.amount} for order_id: {order.order_id}, Currently waiting on paymennt",
+            "qr_string": order.payment.qr_string
+        }
 
+    def validate_pay_order_qr(self, order_id):
+        order = self.get_order_by_id(order_id)
+        result = order.verify_and_update_all_info()
+        if result:
+            return {
+                "success": f"QRcode payment of amount {order.payment.amount} verified for order_id: {order.order_id}"
+            }
+
+    def pay_order_cash(self, order_id):
+        order = self.get_order_by_id(order_id)
+        order.set_payment(CashPayment())
+        order.process()
+        result = order.verify_and_update_all_info()
+        if result:
+            return {
+                "success": f"Successfully payed for order_id: {order.order_id}"
+            }
 
     def check_in_member(self, member_id):
         member = self.get_member_by_id(member_id)
@@ -860,32 +913,6 @@ class Gym:
                 "session_id": booking.session.session_id,
                 "minutes_late": round(minutes_late)
             }
-        
-    
-
-    # def pay_cash(self, user):
-    #     for transaction in self.__transaction_list:
-    #         if transaction.user == user and transaction.status == "Pending":
-    #             new_member = transaction.pay_cash()
-    #             if isinstance(new_member, Member):
-    #                 self.replace_user_with_member(new_member)
-    #             return
-    #     raise Exception("Transaction of user not found")
-    
-    # def create_qr_to_pay(self, user):
-    #     for transaction in self.__transaction_list:
-    #         if transaction.user == user and transaction.status == "Pending":
-    #             qr_code = transaction.create_qr()
-    #             return qr_code
-                
-    # def validate_qr_payment(self, user):
-    #     for transaction in self.__transaction_list:
-    #         if transaction.user == user and transaction.status == "Pending":
-    #             result = transaction.validate_qr_payment()
-    #             if isinstance(result, Member):
-    #                 self.replace_user_with_member(result)
-    #                 return True
-    #             return result
 
     def replace_user_with_member(self, member):
         citizen_id = member.citizen_id
@@ -944,7 +971,7 @@ class Gym:
                 multiplier = 1
             else: multiplier = -1
 
-            for order_item in order.order_items:
+            for order_item in order.order_item_list:
                 price = order_item.calculate_price(order.user) * multiplier
                 if isinstance(order_item, NewMembership):
                     revenue_data["Membership"] += price
@@ -1139,7 +1166,9 @@ class Trainer(Staff):
     def session_info(self):
         sessions = []
         for session in self.session_list:
-            sessions.append(session.info)
+            participants = session.get_enrolled_num()
+            if session.date >= date.today() and participants < session.max_participants:
+                sessions.append(session.info)
 
         return {
             "Staff id": self.staff_id,
@@ -1231,7 +1260,7 @@ class AbstractOrder(ABC):
     __next_id = 1
 
     def __init__(self, user = None):
-        self.__order_id = AbstractOrder.__next_id
+        self.__order_id = f"ODR-{AbstractOrder.__next_id}"
         AbstractOrder.__next_id += 1
         self.__user = user
         self.__payment = None
@@ -1246,7 +1275,10 @@ class AbstractOrder(ABC):
     def total_price(self):
         total = 0
         for order_item in self.__order_item_list:
-            total += order_item.calculate_price(self.__user)
+            if order_item.price_paid:
+                total += order_item.price_paid
+            else:
+                total += order_item.calculate_price(self.__user)
         return total
     
     @property
@@ -1258,7 +1290,7 @@ class AbstractOrder(ABC):
         return self.__user
 
     @property
-    def order_items(self):
+    def order_item_list(self):
         return tuple(self.__order_item_list)
 
     @property
@@ -1290,48 +1322,31 @@ class AbstractOrder(ABC):
         if not isinstance(payment, (CashPayment, CreditCardPayment, QRPayment)):
             raise Exception("Not a valid payment type")
         self.__payment = payment
-    
-    @abstractmethod
-    def process(self):
-        pass
 
-    @abstractmethod
     def verify_and_update_all_info(self):
-        pass
+        if self.payment.validate():
+            self.__status = "Paid"
+            for order_item in self.order_item_list:
+                order_item.set_paid(order_item.calculate_price(self.user))
+            return True
+        return False
 
     def add_order_item(self, order_item):
         self.__order_item_list.append(order_item)
+
+    @abstractmethod
+    def process(self):
+        pass
 
 class Order(AbstractOrder):
     def process(self):
         self.payment.set_amount(self.total_price)
         self.payment.process()
-    
-    def verify_and_update_all_info(self):
-        if self.payment.validate():
-            for order_item in self.__order_item_list:
-                order_item.set_price_paid(order_item.calculate_price(self.__user))
 
 class OrderRefund(AbstractOrder):
     def process(self):
         self.payment.set_amount(self.total_price)
         self.payment.refund()
-
-    def verify_and_update_all_info(self):
-        self.payment.validate()
-
-class QRCode:
-    def __init__(self, transaction_id):
-        self.__qr_string = "Dummy QR Image String"
-        self.__transaction_id = transaction_id
-
-    @property
-    def qr_string(self):
-        return self.__qr_string
-    
-    @property
-    def transaction_id(self):
-        return self.__transaction_id
 
 class Payment(ABC):
     __next_id = 1
@@ -1389,7 +1404,7 @@ class CashPayment(Payment):
         self.set_status("Paid")
 
     def validate(self):
-        if self.status == "Paid":
+        if self.status in ["Paid", "Refunded"]:
             return True
         return False
 
@@ -1404,7 +1419,7 @@ class CreditCardPayment(Payment):
         self.__expiry = expiry
         
     def process(self):
-        result = PaymentGateway.pay_card(self.__card_num, self.__cvv, self.__expiry, self.amount)
+        result = payment_gateway.pay_card(self.__card_num, self.__cvv, self.__expiry, self.amount)
         if result:
             self.set_status("Paid")
             self.set_payment_gateway_transaction_id(result)
@@ -1417,7 +1432,7 @@ class CreditCardPayment(Payment):
         return False
 
     def refund(self):
-        result = PaymentGateway.refund(self.__payment_gateway_transaction_id, self.amount)
+        result = payment_gateway.refund(self.__payment_gateway_transaction_id, self.amount)
         if result:
             self.set_status("Refunded")
         else:
@@ -1428,8 +1443,12 @@ class QRPayment(Payment):
         super().__init__()
         self.__qr_string = ""
 
+    @property
+    def qr_string(self):
+        return self.__qr_string
+
     def process(self):
-        result = PaymentGateway.create_qr(self.amount)
+        result = payment_gateway.create_qr(self.amount)
         if isinstance(result, QRCode):
             self.__qr_string = result.qr_string
             self.set_payment_gateway_transaction_id(result.transaction_id)
@@ -1437,14 +1456,14 @@ class QRPayment(Payment):
             raise Exception("Error")
 
     def validate(self):
-        result = PaymentGateway.validate_qr_payment(self.payment_gateway_transaction_id)
+        result = payment_gateway.validate_qr_payment(self.payment_gateway_transaction_id)
         if result:
             self.set_status("Paid")
             return True
         return False
 
     def refund(self):
-        result = PaymentGateway.refund(self.__payment_gateway_transaction_id, self.amount)
+        result = payment_gateway.refund(self.__payment_gateway_transaction_id, self.amount)
         if result:
             self.set_status("Refunded")
         else:
