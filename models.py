@@ -708,6 +708,10 @@ class Gym:
         daypass = DayPass()          
         order.add_order_item(daypass)
         return order
+    
+    def member_check_in(self, member_id):
+        member = self.get_member_by_id(member_id)
+        member.check_in()
 
     def create_item(self, name, amount, price):
         item = Product(name, amount, price)
@@ -785,6 +789,7 @@ class Gym:
         stock_info = {}
         for item in self.__item_list:
             stock_info[item.name] = {
+                "ID": item.item_id,
                 "amount": item.amount,
                 "price": item.price
             }
@@ -1028,14 +1033,16 @@ class Gym:
             booking.check_in()
             return {
                 "status": "Check-in",
-                "session_id": booking.session.session_id
+                "session_id": booking.session.session_id,
+                "member_id": member.member_id
             }
         else:
             booking.late_check_in()
             return {
                 "status": "Late Check-in",
                 "session_id": booking.session.session_id,
-                "minutes_late": round(minutes_late)
+                "minutes_late": round(minutes_late),
+                "member_id": member.member_id
             }
         
     def set_membership_status(self, member_id, status):
@@ -1201,6 +1208,13 @@ class Member(User):
     @property
     def locker_booking_list(self):
         return tuple(self.__locker_booking_list)
+    
+    @property
+    def check_in(self):
+        booking = self.get_confirmed_booking_today()
+        if booking is None:
+            raise Exception("No confirmed booking found for today")
+        booking.check_in()
     
     def member_status(self):
         return self.__status

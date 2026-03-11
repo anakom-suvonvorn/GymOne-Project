@@ -16,40 +16,43 @@ class ApproveDayPassRequest(BaseModel):
     citizen_id: str
     birth_date: str
 
-@router.post("/approvedaypass", description="Approve a daypass application for guest") ############
+@router.post("/approvedaypass", description="Approve a daypass application for member") ############
 def approve_daypass(request: ApproveDayPassRequest, gym = Depends(get_gym)) -> dict:
     try:
         name = request.name
         citizen_id = request.citizen_id
         birth_date = request.birth_date
-        guess_id = gym.approve_daypass(name, citizen_id, birth_date) # NOTE: in reality this is like giving the receptionist your card in exchange for the gym card
+        member_id = gym.approve_daypass(name, citizen_id, birth_date) # NOTE: in reality this is like giving the receptionist your card in exchange for the gym card
         return {
             "success": f"Daypass for {name} has been approved. Please pay to receive your daypass",
+            "member_id": member_id
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-class CheckInGuestRequest(BaseModel):
-    guest_id: str
+class MemberCheckInRequest(BaseModel):
+    member_id: str
 
 @router.post("/checkinmember", description="Check in a member when they arrive at the gym") ############
-def check_in_member(request: CheckInGuestRequest, gym = Depends(get_gym)) -> dict:
+def check_in_member(request: MemberCheckInRequest, gym = Depends(get_gym)) -> dict:
     try:
         member_id = request.member_id
-        result = gym.check_in_member(member_id)
+        check_in = gym.member_check_in(member_id)
         return {
-            "success": f"Check in successful",
-            "result": result
+            "success": f"Daypass application approved and checked in for member_id: {member_id}",
+            "check_in": check_in
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-class ReserveLockerRequest(BaseModel):
-    member_id: str
-    is_vip: bool 
+class ApplyNewMemberRequest(BaseModel):
+    name: str
+    citizen_id: str
+    birth_date: str
+    membership_type: str
 
 @router.post("/applynewmember", description="Apply for a new membership") #############
-def apply_new_member(request: ReserveLockerRequest, gym = Depends(get_gym)) -> dict:
+def apply_new_member(request: ApplyNewMemberRequest, gym = Depends(get_gym)) -> dict:
     try:
         name = request.name
         citizen_id = request.citizen_id
