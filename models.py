@@ -495,6 +495,19 @@ class Room:
     def max_people(self):
         return self.__max_people
     
+    @property
+    def info(self):
+        return {
+            "room_id": self.__room_id,
+            "name": self.__name,
+            "status": self.__status,
+            "max_people": self.__max_people,
+            "lockers": [
+                {"locker_id": l.locker_id, "type": l.type}
+                for l in self.__locker_list
+            ]
+        }
+    
     def create_lockers(self, amount_normal, amount_vip):
         for i in range(amount_normal):
             self.__locker_list.append(Locker(self))
@@ -540,6 +553,10 @@ class Product:
     @property
     def price(self):
         return self.__price
+    
+    @property
+    def amount(self):
+        return self.__amount
 
     def add_stock(self, amount):
         self.__amount += amount
@@ -661,6 +678,26 @@ class Gym:
                 order.add_order_item(ProductAmount(item, amount))
                 return order
         raise Exception(f"Product '{product_id}' not found")
+    
+    def add_stock(self, product_id, amount):
+        for item in self.__item_list:
+            if item.item_id == product_id:
+                item.add_stock(amount)
+                return item.amount
+        raise Exception(f"Product '{product_id}' not found")
+
+    def remove_stock(self, product_id, amount):
+        for item in self.__item_list:
+            if item.item_id == product_id:
+                item.sell_stock(amount)
+                return item.amount
+        raise Exception(f"Product '{product_id}' not found")
+
+    def get_manager_by_id(self, staff_id):
+        for user in self.__user_list:
+            if isinstance(user, Manager) and user.staff_id == staff_id:
+                return user
+        raise Exception("manager not found")
 
     def reserve_locker(self, member_id, is_vip):
         member = self.get_member_by_id(member_id)
@@ -679,9 +716,9 @@ class Gym:
     #     manager = Manager(citizen_id, name, birth_date, tier, specialization)
     #     self.__user_list.append(manager)
     #     return manager
-
     def create_manager(self, citizen_id, name, birth_date):
         manager = Manager(citizen_id, name, birth_date)
+        manager.set_gym(self)
         self.__user_list.append(manager)
         return manager
     
@@ -723,6 +760,16 @@ class Gym:
                 if session:
                     return session
         raise Exception("session not found")
+    
+    def get_room_by_id(self, room_id):
+        for room in self.__room_list:
+            if room.room_id == room_id:
+                return room
+        raise Exception(f"Room '{room_id}' not found")
+
+    def check_room(self, room_id):
+        room = self.get_room_by_id(room_id)
+        return room.info
     
     def get_member_by_id(self, member_id):
         for user in self.__user_list:
@@ -912,13 +959,25 @@ class Gym:
                 "session_id": booking.session.session_id
             }
         else:
-            # มาสายเกิน 15 นาที — บันทึก Late Check-in ตามโจทย์ข้อ 2.5
             booking.late_check_in()
             return {
                 "status": "Late Check-in",
                 "session_id": booking.session.session_id,
                 "minutes_late": round(minutes_late)
             }
+        
+    def set_membership_status(self, member_id, status):
+        member = self.get_member_by_id(member_id)
+        if status == "Active":
+            member.activate()
+        elif status == "Suspended":
+            member.suspend()
+        elif status == "Frozen":
+            member.freeze()
+        elif status == "Expired":
+            member.expire()
+        else:
+            raise Exception(f"Invalid status: {status}. Valid: Active, Suspended, Frozen, Expired")
 
     def replace_user_with_member(self, member):
         citizen_id = member.citizen_id
@@ -1063,11 +1122,21 @@ class Member(User):
     def order_list(self):
         return tuple(self.__order_list)
     
+    @property
     def member_status(self):
         return self.__status
 
     def activate(self):
         self.__status = "Active"
+
+    def suspend(self):
+        self.__status = "Suspended"
+
+    def freeze(self):
+        self.__status = "Frozen"
+
+    def expire(self):
+        self.__status = "Expired"
 
     @property
     def order_info(self):
@@ -1243,19 +1312,31 @@ class Receptionist(Staff):
         return super().show_notifications()
 
 class Manager(Staff):
-    def __init__(self, citizen_id, name, birth_date): #MEM-2023-001
+    def __init__(self, citizen_id, name, birth_date):
         super().__init__(citizen_id, name, birth_date)
-        self.__gym = Gym
+        self.__gym = None
 
-    def add_stock(self, name, amount, price):
-        self.__gym.create_item(name, amount, price)
+    def set_gym(self, gym):
+        self.__gym = gym
+
+    def add_stock(self, product_id, amount):
+        return self.__gym.add_stock(product_id, amount)
+
+    def remove_stock(self, product_id, amount):
+        return self.__gym.remove_stock(product_id, amount)
+    
+    def check_room(self, room_id):
+        return self.__gym.check_room(room_id)
 
     def get_report(self, month, year):
         return self.__gym.gather_report(month, year)
     
     def show_notifications(self):
-        return super().show_notifications()
-
+        return []
+    
+    def set_membership_status(self, member_id, status):
+        return self.__gym.set_membership_status(member_id, status)
+    
 class MembershipPlan(Enum):
     # Tuple format: (price, booking_discount, product_discount, locker_discount)
     MONTHLY = (1500, 0.0, 0.0, 0.0)
