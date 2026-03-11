@@ -679,10 +679,16 @@ class Gym:
     #     manager = Manager(citizen_id, name, birth_date, tier, specialization)
     #     self.__user_list.append(manager)
     #     return manager
-    def create_manager(self, citizen_id, name, age):
-        manager = Manager(citizen_id, name, age)
+
+    def create_manager(self, citizen_id, name, birth_date):
+        manager = Manager(citizen_id, name, birth_date)
         self.__user_list.append(manager)
         return manager
+    
+    def create_receptionist(self, citizen_id, name, birth_date):
+        receptionist = Receptionist(citizen_id, name, birth_date)
+        self.__user_list.append(receptionist)
+        return receptionist
     
     def get_available_classes(self):
         class_list = []
@@ -1140,7 +1146,7 @@ class Staff(User):
 
     def __init__(self, citizen_id, name, birth_date): #MEM-2023-001
         super().__init__(citizen_id, name, birth_date)
-        self.__staff_id = f"STF-{Staff.__next_id:03d}"
+        self.__staff_id = f"STF-{Staff.__next_id:03d}" 
         Staff.__next_id += 1
 
     @property
@@ -1218,6 +1224,23 @@ class Trainer(Staff):
 
     def show_notifications(self):
         return super().show_notifications()
+    
+class Receptionist(Staff):
+    def __init__(self, citizen_id, name, birth_date): #MEM-2023-001
+        super().__init__(citizen_id, name, birth_date)
+
+    def approve_day_pass(self, gym, member_id):
+        gym.approve_day_pass(member_id)
+
+    def create_member(self, gym, citizen_id, name, birth_date):
+        return gym.create_member(citizen_id, name, birth_date)
+    
+    def process_payment(self, gym, order_id):
+        order = gym.get_order_by_id(order_id)
+        order.process()
+
+    def show_notifications(self):
+        return super().show_notifications()
 
 class Manager(Staff):
     def __init__(self, citizen_id, name, birth_date): #MEM-2023-001
@@ -1227,8 +1250,11 @@ class Manager(Staff):
     def add_stock(self, name, amount, price):
         self.__gym.create_item(name, amount, price)
 
-    def get_reports(self, month, year):
+    def get_report(self, month, year):
         return self.__gym.gather_report(month, year)
+    
+    def show_notifications(self):
+        return super().show_notifications()
 
 class MembershipPlan(Enum):
     # Tuple format: (price, booking_discount, product_discount, locker_discount)

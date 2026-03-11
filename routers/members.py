@@ -25,7 +25,7 @@ def show_available_private_sessions(gym = Depends(get_gym)):
         "private_sessions": private_sessions,
     }
 
-@router.get("/notifications/{member_id}", description="Show notification of a member") #########
+@router.get("/notifications/{member_id}", description="Show notifications for a specific member") #########
 def show_notifications(member_id: str, gym = Depends(get_gym)):
     try:
         member = gym.get_member_by_id(member_id)
@@ -36,7 +36,7 @@ def show_notifications(member_id: str, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/showbooking/{member_id}", description="Show bookings of a member") ###########
+@router.get("/showbooking/{member_id}", description="Show current bookings for a specific member") ###########
 def show_current_bookings(member_id: str, gym = Depends(get_gym)):
     try:
         member = gym.get_member_by_id(member_id)
@@ -47,7 +47,7 @@ def show_current_bookings(member_id: str, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/showorder/{member_id}", description="Show orders of a member") ##########
+@router.get("/showorder/{member_id}", description="Show current orders for a specific member") ##########
 def show_current_orders(member_id: str, gym = Depends(get_gym)):
     try:
         member = gym.get_member_by_id(member_id)

@@ -1,3 +1,5 @@
+from logging import Manager
+
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
 from pydantic import BaseModel
@@ -11,10 +13,10 @@ router = APIRouter(
 # NOTE: this whole file is just mainly for structure and knowing what to do
 # We can change the function call name or how it works inside or however we like it to be
 
-@router.get("/getreport")
-def get_report(gym = Depends(get_gym)):
+@router.get("/getreport", description="Get a report of the gym's performance for a specific month and year") #############
+def get_report(month: int, year: int, gym = Depends(get_gym)):
     try:
-        report = gym.get_report()
+        report = gym.gather_report(month, year)
         return {
             "report": report,
         }
@@ -31,26 +33,26 @@ def get_report(room_id: str, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/viewrulebreaks")
-def view_rule_breaks(gym = Depends(get_gym)):
-    try:
-        violations = gym.view_rule_breaks() # list of booking that is either no-show or late cancellation
-        return {
-            "violations": violations,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+# @router.get("/viewrulebreaks", description="View all rule breaks in the gym")
+# def view_rule_breaks(gym = Depends(get_gym)):
+#     try:
+#         violations = gym.view_rule_breaks() # list of booking that is either no-show or late cancellation
+#         return {
+#             "violations": violations,
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/pardonbooking", description="use to tool to pardon a booking violation, includes ")
-def pardon_booking(body: dict, gym = Depends(get_gym)) -> dict:
-    try:
-        booking_id = body["booking_id"]
-        gym.pardon_booking(booking_id)
-        return {
-            "success": f"succesfully pardoned booking with id: {booking_id}"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+# @router.post("/pardonbooking", description="use to tool to pardon a booking violation, includes ")
+# def pardon_booking(body: dict, gym = Depends(get_gym)) -> dict:
+#     try:
+#         booking_id = body["booking_id"]
+#         gym.pardon_booking(booking_id)
+#         return {
+#             "success": f"succesfully pardoned booking with id: {booking_id}"
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=str(e))
     
 @router.post("/product/add")
 def add_stock(body: dict, gym = Depends(get_gym)) -> dict:
