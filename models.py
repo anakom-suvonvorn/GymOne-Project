@@ -150,21 +150,26 @@ class TrainingBooking(Booking):
         }
     
     @property
-    def notification(self): # TODO > make actual notification
+    def notification(self):
+        text = f"[booking_id {self.booking_id} | session_id: {self.__session.session_id}] : "
         if self.__session.status == "Cancelled":
-            return f"[] [session id: {self.__session.session_id}] Has been cancelled"
+            text += f"Session has been cancelled"
         elif self.status == "Pending":
-            return "Pending. Please Pay to Confirm Booking"
+             text += "Pending. Please Pay to Confirm Booking"
         elif self.status == "Confirmed":
             difference = self.__session.start - datetime.now()
             if difference < timedelta(0): 
-                return ""
+                text += "Already Passed"
             elif difference.total_seconds() / 3600 <= 2: 
-                return difference.total_seconds() / 60
+                text += str(difference.total_seconds() / 60)
+                text += " minutes until session"
             elif difference.days <= 2: 
-                return difference.total_seconds() / 3600
+                text += str(difference.total_seconds() / 3600)
+                text += " hours until session"
             else: 
-                return difference.days
+                text += str(difference.days)
+                text += " days until session"
+        return text
         
     def calculate_price(self, user = None):
         membership_type = self.__member.current_membership
@@ -1173,11 +1178,8 @@ class Member(User):
         self.__member_id = f"MEM-{Member.__next_id:03d}"
         Member.__next_id += 1
         self.__current_membership = current_membership
-        self.__medical_history = medical_history
-        self.__goal = goal
         self.__training_plan = ""
         self.__status = "Pending"
-        self.__membership_log_list = []
         self.__order_list = []
         self.__training_booking_list = []
         self.__locker_booking_list = []
@@ -1272,7 +1274,14 @@ class Member(User):
         return notifications
     
     def check_self_info(self):
-        return self.__training_plan, [f"{training_booking.training_log} [{training_booking.session.date}]" for training_booking in self.__training_booking_list]
+        return {
+            "member_id": self.__member_id,
+            "name": self.name,
+            "current_membership": self.__current_membership,
+            "status": self.__status,
+            "training_plan": self.__training_plan,
+            "training_history": [f"{training_booking.training_log} [{training_booking.session.date}]" for training_booking in self.__training_booking_list]
+        }
 
 class Guest(User):
     __next_id = 1

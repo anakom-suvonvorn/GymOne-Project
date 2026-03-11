@@ -57,15 +57,12 @@ def show_current_orders(member_id: str, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/checkselfinfo/{member_id}", description="Show traning plan of the member and the training history too") ##########
+@router.get("/checkselfinfo/{member_id}", description="Show information about the specific member") ##########
 def check_self_info(member_id: str, gym = Depends(get_gym)):
     try:
         member = gym.get_member_by_id(member_id)
-        training_plan, training_history = member.check_self_info()
-        return {
-            "training_plan": training_plan,
-            "training_history": training_history
-        }
+        result = member.check_self_info()
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
@@ -118,7 +115,7 @@ class PayOrderCreditCardRequest(BaseModel):
     cvv: int
     expiry: str
 
-@router.post("/pay_order/creditcard")
+@router.post("/pay_order/creditcard", description="Pay for an order using a credit card [ONLINE]")
 def pay_order_credit_card(request: PayOrderCreditCardRequest, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.pay_order_credit_card(request.card_num, request.cvv, request.expiry, request.order_id)
@@ -129,7 +126,7 @@ def pay_order_credit_card(request: PayOrderCreditCardRequest, gym = Depends(get_
 class PayOrderQR(BaseModel):
     order_id: str
 
-@router.post("/pay_order/qr")
+@router.post("/pay_order/qr", description="Create a qr code to pay [ONLINE]")
 def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.pay_order_qr(request.order_id)
@@ -137,7 +134,7 @@ def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/pay_order/qr/validate")
+@router.post("/pay_order/qr/validate", description="Check payment state of qr code [ONLINE]")
 def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.validate_pay_order_qr(request.order_id)

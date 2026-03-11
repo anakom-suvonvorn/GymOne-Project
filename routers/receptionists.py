@@ -115,60 +115,46 @@ def reserve_locker(request: ReserveLockerRequest, gym = Depends(get_gym)) -> dic
 # onsite payments (cash, creditcard, qr)
 
 class PayOrderCashRequest(BaseModel):
-    member_id: str
+    order_id: str
 
-@router.post("/payorder/cash", description="Pay for an order using cash")
+@router.post("/payorder/cash", description="Pay for an order using cash [ONSITE: at reception]")
 def pay_order_cash(request: PayOrderCashRequest, gym = Depends(get_gym)) -> dict:
     try:
-        member_id = request.member_id
-        member = gym.get_member_by_id(member_id)
-        transaction_id, total, items = gym.pay_order_cash(member) # NOTE: might be member_id or guest_id or order_id to reference the order instead, needs looking into
-        return {
-            "success": f"{member.name} has succesfully payed a total of {total} with these items",
-            "items": [f"{item}" for item in items],
-            "transaction_id": transaction_id
-        }
+        order_id = request.order_id
+        result = gym.pay_order_cash(order_id)
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
 class PayOrderCreditCardRequest(BaseModel):
-    member_id: str
-    card_num: str
-    cvv: str
+    order_id: str
+    card_num: int
+    cvv: int
     expiry: str
 
-@router.post("/payorder/creditcard", description="Pay for an order using a credit card")
+@router.post("/pay_order/creditcard", description="Pay for an order using a credit card [ONSITE: at reception]")
 def pay_order_credit_card(request: PayOrderCreditCardRequest, gym = Depends(get_gym)) -> dict:
     try:
-        member_id = request.member_id
-        member = gym.get_member_by_id(member_id)
-        card_num = request.card_num
-        cvv = request.cvv
-        expiry = request.expiry
-        transaction_id, total, items = gym.pay_order_credit_card(member, card_num, cvv, expiry) # NOTE: might be member_id or guest_id or order_id to reference the order instead, needs looking into
-        return {
-            "success": f"{member.name} has succesfully payed a total of {total} with these items",
-            "items": [f"{item}" for item in items],
-            "transaction_id": transaction_id
-        }
+        result = gym.pay_order_credit_card(request.card_num, request.cvv, request.expiry, request.order_id)
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-class PayOrderQRRequest(BaseModel):
-    member_id: str
-    order_id: str 
+class PayOrderQR(BaseModel):
+    order_id: str
 
-@router.post("/payorder/qr", description="Pay for an order using a QR code")
-def pay_order_qr(request: PayOrderQRRequest, gym = Depends(get_gym)) -> dict:
+@router.post("/pay_order/qr", description="Create a qr code to pay [ONSITE: at reception]")
+def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     try:
-        member_id = request.member_id
-        order_id = request.order_id
-        member = gym.get_member_by_id(member_id)
-        transaction_id, total, items = gym.pay_order_qr(member, order_id) # NOTE: might be member_id or guest_id or order_id to reference the order instead, needs looking into
-        return {
-            "success": f"{member.name} has succesfully payed a total of {total} with these items",
-            "items": [f"{item}" for item in items],
-            "transaction_id": transaction_id
-        }
+        result = gym.pay_order_qr(request.order_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+@router.post("/pay_order/qr/validate", description="Check payment state of qr code [ONSITE: at reception]")
+def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
+    try:
+        result = gym.validate_pay_order_qr(request.order_id)
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
