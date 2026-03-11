@@ -1,5 +1,7 @@
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
+from pydantic import BaseModel
+from typing import Literal, Optional
 
 router = APIRouter(
     prefix="/manager",
@@ -39,7 +41,7 @@ def view_rule_breaks(gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/pardonbooking")
+@router.post("/pardonbooking", description="use to tool to pardon a booking violation, includes ")
 def pardon_booking(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         booking_id = body["booking_id"]
