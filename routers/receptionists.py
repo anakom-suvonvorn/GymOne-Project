@@ -11,7 +11,7 @@ router = APIRouter(
 # NOTE: this whole file is just mainly for structure and knowing what to do
 # We can change the function call name or how it works inside or however we like it to be
 
-@router.post("/approvedaypass") ############
+@router.post("/approvedaypass", description = "") ############
 def approve_daypass(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         name = body["name"]
@@ -36,7 +36,7 @@ def check_in_member(body: dict, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/applynewmember") #############
+@router.post("/applynewmember", description = "") #############
 def apply_new_member(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         name = body["name"]
@@ -51,7 +51,7 @@ def apply_new_member(body: dict, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/changemembership") ###############
+@router.post("/changemembership", description = "") ###############
 def change_membership(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         member_id = body["member_id"]
@@ -63,7 +63,7 @@ def change_membership(body: dict, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/sellproduct") ###########
+@router.post("/sellproduct", description = "") ###########
 def sell_product(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         product_id = body["product_id"]
@@ -75,7 +75,7 @@ def sell_product(body: dict, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/reservelocker")
+@router.post("/reservelocker", description = "") ############
 def reserve_locker(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         member_id = body["member_id"]
