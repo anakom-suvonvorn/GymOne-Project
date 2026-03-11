@@ -1,3 +1,5 @@
+from logging import Manager
+
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
 from pydantic import BaseModel
@@ -12,9 +14,9 @@ router = APIRouter(
 # We can change the function call name or how it works inside or however we like it to be
 
 @router.get("/getreport")
-def get_report(gym = Depends(get_gym)):
+def get_report(month: int, year: int, gym = Depends(get_gym)):
     try:
-        report = gym.get_report()
+        report = Manager.get_report(month, year)
         return {
             "report": report,
         }

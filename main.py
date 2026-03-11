@@ -22,9 +22,9 @@ def create_stuff():
     gym_bro = gym.create_trainer("987654321", "Yabro Muscal", date(2000, 1, 1), "Junior", "muscle making")
     gym_bro.create_repeating_session(time(8,0,0),time(10,30,0),date(2026,4,15),7,3,1,private_room)
 
-    manager_tyler = None
+    manager_tyler = gym.create_manager("246813579", "Tyler manager", date(1990, 1, 1))
 
-    receptionist_alya = None
+    receptionist_alya = gym.create_receptionist("135792468", "Alya receptionist", date(1995, 1, 1))
 
     bob_membership = gym.create_member("123456789", "Bobda builder", date(2006, 1, 1))
 
