@@ -1,5 +1,7 @@
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
+from pydantic import BaseModel
+from typing import Literal, Optional
 
 router = APIRouter(
     prefix="/trainer",

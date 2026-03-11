@@ -1,5 +1,7 @@
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
+from pydantic import BaseModel
+from typing import Literal, Optional
 
 router = APIRouter(
     prefix="/member",
@@ -66,20 +68,22 @@ def check_self_info(member_id: str, gym = Depends(get_gym)):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+class ChangeMembershipRequest(BaseModel):
+    member_id: str
+    new_membership_type: Literal["Monthly", "Annual", "Student"]
 
-@router.post("/changemembership")
-def change_membership(body: dict, gym = Depends(get_gym)) -> dict:
+@router.post("/changemembership", description="Change the membership type of a member, adds to order, needs to pay order to confirm") ###########
+def change_membership(request: ChangeMembershipRequest, gym = Depends(get_gym)) -> dict:
     try:
-        member_id = body["member_id"]
-        new_membership_type = body["new_membership_type"]
-        gym.change_membership(member_id, new_membership_type)
+        gym.change_membership(request.member_id, request.new_membership_type)
         return {
-            "success": f"Success. Please pay to confirm application",
+            "success": f"Success. Please pay order to confirm application",
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.post("/enrollsession")
+@router.post("/enrollsession") ############
 def enroll_session(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         member_id = body["member_id"]
@@ -93,15 +97,13 @@ def enroll_session(body: dict, gym = Depends(get_gym)) -> dict:
 def cancel_booking(body: dict, gym = Depends(get_gym)) -> dict:
     try:
         booking_id = body["booking_id"]
-        result = gym.cancel_booking_by_id(booking_id)
+        result = gym.cancel_booking(booking_id)
         return {
             "success": f"succesfully cancelled booking with booking_id: {booking_id} with result",
             "result": result
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
-    
     
 # NOTE: a lot of the above function will result in something that is pending > can be paid/confirmed by paying
 # online payments (creditcard, qr)
