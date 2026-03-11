@@ -1,7 +1,7 @@
 from datetime import datetime, date, time, timedelta
 import uvicorn, pprint
 from fastapi import FastAPI, HTTPException, APIRouter
-from fastapi_mcp import FastApiMCP
+# from fastapi_mcp import FastApiMCP
 
 from models import Gym, Member, Trainer
 from routers.members import router as member_router
@@ -22,7 +22,7 @@ def create_stuff():
     gym_bro = gym.create_trainer("987654321", "Yabro Muscal", date(2000, 1, 1), "Junior", "muscle making")
     gym_bro.create_repeating_session(time(8,0,0),time(10,30,0),date(2026,4,15),7,3,1,private_room)
 
-    manager_tyler = gym.create_manager("246813579", "Tyler manager", date(1990, 1, 1))
+    manager_tyler = gym.create_manager("111111111", "Tyler", date(1990, 1, 1))
 
     receptionist_alya = gym.create_receptionist("135792468", "Alya receptionist", date(1995, 1, 1))
 
@@ -80,8 +80,8 @@ def run_api():
     app.include_router(receptionist_router)
     app.include_router(manager_router)
 
-    mcp = FastApiMCP(app)
-    mcp.mount()
+    # mcp = FastApiMCP(app)
+    # mcp.mount()
 
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
 
