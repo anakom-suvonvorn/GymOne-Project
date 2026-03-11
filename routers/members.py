@@ -11,14 +11,14 @@ router = APIRouter(
 # NOTE: this whole file is just mainly for structure and knowing what to do
 # We can change the function call name or how it works inside or however we like it to be
 
-@router.get("/showclass", description="Show available classes") ########
+@router.get("/showclass", description="Show all available classes and their sessions that is not full and is not passed the session date yet") ########
 def show_available_classes(gym = Depends(get_gym)):
     classes = gym.get_available_classes()
     return {
         "classes": classes,
     }
 
-@router.get("/showprivate", description="Show available private sessions") #########
+@router.get("/showprivate", description="Show all available triners and their sessions that is not full and is not passed the session date yet") #########
 def show_available_private_sessions(gym = Depends(get_gym)):
     private_sessions = gym.get_available_private_sessions()
     return {
@@ -57,7 +57,7 @@ def show_current_orders(member_id: str, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/checkselfinfo/{member_id}", description="Check self info for a specific member") ##########
+@router.get("/checkselfinfo/{member_id}", description="Show traning plan of the member and the training history too") ##########
 def check_self_info(member_id: str, gym = Depends(get_gym)):
     try:
         member = gym.get_member_by_id(member_id)
@@ -82,15 +82,14 @@ def change_membership(request: ChangeMembershipRequest, gym = Depends(get_gym)) 
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
+    
 class EnrollSessionRequest(BaseModel):
     member_id: str
     session_id: str
 
-@router.post("/enrollsession", description="Enroll a member in a specific session") ############
+@router.post("/enrollsession", description="Enroll member into a session") ############
 def enroll_session(request: EnrollSessionRequest, gym = Depends(get_gym)) -> dict:
     try:
-
         gym.enroll_member_by_id(request.member_id, request.session_id)
         return {"success": f"{request.member_id} has been succesfully enrolled into session with session_id: {request.session_id}. please confirm booking by paying"}
     except Exception as e:
@@ -99,13 +98,12 @@ def enroll_session(request: EnrollSessionRequest, gym = Depends(get_gym)) -> dic
 class CancelBookingRequest(BaseModel):
     booking_id: str
     
-@router.post("/cancelbooking", description="Cancel a specific booking by booking_id")
+@router.post("/cancelbooking", description="Cancels a TrainingBooking")
 def cancel_booking(request: CancelBookingRequest, gym = Depends(get_gym)) -> dict:
     try:
-        booking_id = request.booking_id
-        result = gym.cancel_booking(booking_id)
+        result = gym.cancel_booking(request.booking_id)
         return {
-            "success": f"succesfully cancelled booking with booking_id: {booking_id} with result",
+            "success": f"succesfully cancelled booking with booking_id: {request.booking_id} with result",
             "result": result
         }
     except Exception as e:
@@ -115,44 +113,35 @@ def cancel_booking(request: CancelBookingRequest, gym = Depends(get_gym)) -> dic
 # online payments (creditcard, qr)
 
 class PayOrderCreditCardRequest(BaseModel):
-    member_id: str
     order_id: str
-    card_num: str
-    cvv: str
+    card_num: int
+    cvv: int
     expiry: str
-    
-@router.post("/pay_order/creditcard", description="Pay for an order using a credit card")
+
+@router.post("/pay_order/creditcard")
 def pay_order_credit_card(request: PayOrderCreditCardRequest, gym = Depends(get_gym)) -> dict:
     try:
-        member_id = request.member_id
-        order_id = request.order_id
-        card_num = request.card_num
-        cvv = request.cvv  
-        expiry = request.expiry
-        transaction_id, total, items = gym.pay_order_credit_card(card_num, cvv, expiry, member_id, order_id) # NOTE: might be member_id or guest_id or order_id to reference the order instead, needs looking into
-        return {
-            "success": f"{member_id} has succesfully payed a total of {total} with these items",
-            "items": [f"{item}" for item in items],
-            "transaction_id": transaction_id
-        }
+        result = gym.pay_order_credit_card(request.card_num, request.cvv, request.expiry, request.order_id)
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-class PayOrderQRRequest(BaseModel):
-    member_id: str
-    order_id: str # might not even need this if we just reference the pending order by member_id or something instead, needs looking into
-@router.post("/pay_order/qr", description="Pay for an order using a QR code")
-def pay_order_qr(request: PayOrderQRRequest, gym = Depends(get_gym)) -> dict:
+class PayOrderQR(BaseModel):
+    order_id: str
+
+@router.post("/pay_order/qr")
+def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     try:
-        member_id = request.member_id
-        order_id = request.order_id
-        member = gym.get_member_by_id(member_id)
-        transaction_id, total, items = gym.pay_order_qr(member, order_id) # NOTE: might be member_id or guest_id or order_id to reference the order instead, needs looking into
-        return {
-            "success": f"{member.name} has succesfully payed a total of {total} with these items",
-            "items": [f"{item}" for item in items],
-            "transaction_id": transaction_id
-        }
+        result = gym.pay_order_qr(request.order_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+@router.post("/pay_order/qr/validate")
+def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
+    try:
+        result = gym.validate_pay_order_qr(request.order_id)
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
