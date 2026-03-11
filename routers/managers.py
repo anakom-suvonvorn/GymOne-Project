@@ -116,3 +116,45 @@ def get_staff_info(gym = Depends(get_gym)):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+class AddReceptionistRequest(BaseModel):
+    citizen_id: str
+    name: str
+    birth_date: str
+
+@router.post("/addreceptionist", description="Add a receptionist to the gym")
+def add_receptionist(request: AddReceptionistRequest, gym = Depends(get_gym)):
+    try:
+        citizen_id = request.citizen_id
+        name = request.name
+        birth_date = request.birth_date
+        receptionist = gym.create_receptionist(citizen_id, name, birth_date)
+        return {
+            "success": f"succesfully added receptionist with id: {receptionist.staff_id}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+class AddTrainerRequest(BaseModel):
+    citizen_id: str
+    name: str
+    birth_date: str
+    tier: int
+    specialization: str
+
+@router.post("/addtrainer", description="Add a trainer to the gym")
+def add_trainer(request: AddTrainerRequest, gym = Depends(get_gym)):
+    try:
+        citizen_id = request.citizen_id
+        name = request.name
+        birth_date = request.birth_date
+        tier = request.tier
+        specialization = request.specialization
+        trainer = gym.create_trainer(citizen_id, name, birth_date, tier, specialization)
+        return {
+            "success": f"succesfully added trainer with id: {trainer.staff_id}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+
