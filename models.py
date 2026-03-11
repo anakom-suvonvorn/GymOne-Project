@@ -36,6 +36,10 @@ class OrderItem(ABC):
     def set_paid(self, amount):
         pass
 
+    @abstractmethod
+    def set_refunded(self, amount):
+        return
+
 class DayPass(OrderItem):
     def __init__(self, payment_status="Pending"):
         super().__init__(payment_status)
@@ -47,6 +51,11 @@ class DayPass(OrderItem):
     def set_paid(self, amount):
         self.set_price_paid(amount)
         self.set_payment_status("Paid")
+
+    def set_refunded(self, amount):
+        return
+        # self.set_price_paid(amount)
+        # self.set_payment_status("Refunded")
     
     def __str__(self):
         return "DayPass"
@@ -66,18 +75,29 @@ class NewMembership(OrderItem):
     def set_paid(self, amount):
         self.set_price_paid(amount)
         self.set_payment_status("Paid")
+
+    def set_refunded(self, amount):
+        return
     
     def __str__(self):
         return f"NewMembership {self.__membership}"
 
 class Booking(OrderItem):
+    __next_id = 1
+        
     def __init__(self, status = "Pending"):
         super().__init__()
+        self.__booking_id = f"BK-{Booking.__next_id}"
+        Booking.__next_id += 1
         self.__status = status # statuses: Waitlist Confirmed Check-in Completed Cancelled
 
     @property
     def status(self):
         return self.__status
+    
+    @property
+    def booking_id(self):
+        return self.__booking_id
 
     def confirm(self):
         self.__status = "Confirmed"
@@ -123,23 +143,28 @@ class TrainingBooking(Booking):
         else:
             status_text = self.status
         return {
+            "booking id" : self.booking_id,
             "session id" : self.__session.session_id,
             "Class date": self.__session.date,
             "Status": status_text
         }
     
     @property
-    def notification(self):
+    def notification(self): # TODO > make actual notification
         if self.__session.status == "Cancelled":
-            return f"[session id: {self.__session.session_id}] Has been cancelled"
+            return f"[] [session id: {self.__session.session_id}] Has been cancelled"
         elif self.status == "Pending":
             return "Pending. Please Pay to Confirm Booking"
         elif self.status == "Confirmed":
             difference = self.__session.start - datetime.now()
-            if difference < 0: return ""
-            elif difference.total_seconds() / 3600 <= 2: return difference.total_seconds() / 60
-            elif difference.days <= 2: return difference.total_seconds() / 3600
-            else: return difference.days
+            if difference < timedelta(0): 
+                return ""
+            elif difference.total_seconds() / 3600 <= 2: 
+                return difference.total_seconds() / 60
+            elif difference.days <= 2: 
+                return difference.total_seconds() / 3600
+            else: 
+                return difference.days
         
     def calculate_price(self, user = None):
         membership_type = self.__member.current_membership
@@ -154,9 +179,19 @@ class TrainingBooking(Booking):
         return discount_price
     
     def set_paid(self, amount):
+        room = self.__session.room
+        new_locker_booking = room.reserve_locker("Normal", self.__member, self.__session.start, self.__session.end, "Confirmed")
+        self.__locker_booking = new_locker_booking
         self.confirm()
         self.set_price_paid(amount)
         self.set_payment_status("Paid")
+
+    def set_refunded(self, amount):
+        # need to go find where the booking is stored in room and also remove it
+        self.cancel()
+        self.locker_booking.cancel()
+        self.set_price_paid(amount)
+        self.set_payment_status("Refunded")
 
     def __str__(self):
         if self.status == "Pending":
@@ -424,6 +459,9 @@ class LockerBooking(Booking):
         self.confirm()
         self.set_price_paid(amount)
         self.set_payment_status("Paid")
+
+    def set_refunded(self, amount):
+        self.cancel()
     
     def __str__(self):
         if self.status == "Pending":
@@ -468,7 +506,7 @@ class Locker:
         self.__locker_booking_list.append(new_locker_booking)
         member.add_booking(new_locker_booking)
         
-        return new_locker_booking
+        return new_locker_booking     
 
 class Room:
     __next_id = 1
@@ -820,10 +858,10 @@ class Gym:
         for user in self.__user_list:
             if not isinstance(user, Member):
                 continue
-            for training_booking in user.__training_booking_list:
+            for training_booking in user.training_booking_list:
                 if training_booking.booking_id == booking_id:
                     return training_booking
-            for locker_booking in user.__locker_booking_list:
+            for locker_booking in user.locker_booking_list:
                 if locker_booking.booking_id == locker_booking:
                     return locker_booking
 
@@ -875,6 +913,7 @@ class Gym:
 
     def refund_booking(self, booking):
         refund_order = self.create_order(booking.member, refund=True)
+        refund_order.set_status("Refunded")
         original_order = self.get_order_with_item(booking)
         payment_type = type(original_order.payment)
         new_payment = payment_type()
@@ -927,6 +966,8 @@ class Gym:
         
         self.refund_booking(booking)
         refund_amount = booking.price_paid
+        booking.cancel()
+        booking.locker_booking.cancel()
         return {
             "cancelled": True,
             "refund": refund_amount,
@@ -1154,6 +1195,13 @@ class Member(User):
         return tuple(self.__order_list)
     
     @property
+    def training_booking_list(self):
+        return tuple(self.__training_booking_list)
+    
+    @property
+    def locker_booking_list(self):
+        return tuple(self.__locker_booking_list)
+    
     def member_status(self):
         return self.__status
 
@@ -1470,13 +1518,12 @@ class AbstractOrder(ABC):
             raise Exception("Not a valid payment type")
         self.__payment = payment
 
+    def set_status(self, status):
+        self.__status = status
+
+    @abstractmethod
     def verify_and_update_all_info(self):
-        if self.payment.validate():
-            self.__status = "Paid"
-            for order_item in self.order_item_list:
-                order_item.set_paid(order_item.calculate_price(self.user))
-            return True
-        return False
+        pass
 
     def add_order_item(self, order_item):
         self.__order_item_list.append(order_item)
@@ -1490,10 +1537,26 @@ class Order(AbstractOrder):
         self.payment.set_amount(self.total_price)
         self.payment.process()
 
+    def verify_and_update_all_info(self):
+        if self.payment.validate():
+            self.set_status("Paid")
+            for order_item in self.order_item_list:
+                order_item.set_paid(order_item.calculate_price(self.user))
+            return True
+        return False
+
 class OrderRefund(AbstractOrder):
     def process(self):
         self.payment.set_amount(self.total_price)
         self.payment.refund()
+
+    def verify_and_update_all_info(self):
+        if self.payment.validate():
+            self.set_status("Refunded")
+            for order_item in self.order_item_list:
+                order_item.set_refunded(order_item.calculate_price(self.user))
+            return True
+        return False
 
 class Payment(ABC):
     __next_id = 1
@@ -1559,7 +1622,7 @@ class CashPayment(Payment):
         self.set_status("Refunded")
 
 class CreditCardPayment(Payment):
-    def __init__(self, card_num, cvv, expiry):
+    def __init__(self, card_num = None, cvv = None, expiry = None):
         super().__init__()
         self.__card_num = card_num
         self.__cvv = cvv
@@ -1574,12 +1637,12 @@ class CreditCardPayment(Payment):
             raise Exception("Error")
 
     def validate(self):
-        if self.status == "Paid":
+        if self.status in ["Paid", "Refunded"]:
             return True
         return False
 
     def refund(self):
-        result = payment_gateway.refund(self.__payment_gateway_transaction_id, self.amount)
+        result = payment_gateway.refund(self.payment_gateway_transaction_id, self.amount)
         if result:
             self.set_status("Refunded")
         else:
@@ -1610,7 +1673,7 @@ class QRPayment(Payment):
         return False
 
     def refund(self):
-        result = payment_gateway.refund(self.__payment_gateway_transaction_id, self.amount)
+        result = payment_gateway.refund(self.payment_gateway_transaction_id, self.amount)
         if result:
             self.set_status("Refunded")
         else:
