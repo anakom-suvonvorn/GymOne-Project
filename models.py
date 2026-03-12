@@ -61,9 +61,10 @@ class DayPass(OrderItem):
         return "DayPass"
     
 class NewMembership(OrderItem):
-    def __init__(self, membership, payment_status="Pending"):
+    def __init__(self, membership, payment_status="Pending", member = None):
         super().__init__(payment_status)
         self.__membership = membership
+        self.__member = member
 
     @property
     def membership(self):
@@ -75,6 +76,8 @@ class NewMembership(OrderItem):
     def set_paid(self, amount):
         self.set_price_paid(amount)
         self.set_payment_status("Paid")
+        if self.__member:
+            self.__member.activate()
 
     def set_refunded(self, amount):
         return
@@ -688,13 +691,13 @@ class Gym:
         member = Member(citizen_id, name, birth_date)
         self.__user_list.append(member)
         order = self.create_order(member)
-        order.add_order_item(NewMembership(membership_type))
+        order.add_order_item(NewMembership(membership_type, member=member))
         return member.member_id
     
     def change_memberhsip(self, member_id, new_membership_type):
         member = self.get_member_by_id(member_id)
         order = self.create_order(member)
-        order.add_order_item(NewMembership(new_membership_type))
+        order.add_order_item(NewMembership(new_membership_type, member=member))
         return order
 
     def approve_daypass(self, citizen_id, name, birth_date):
@@ -1073,7 +1076,7 @@ class Gym:
     def change_membership(self, member_id, new_membership_type):
         member = self.get_member_by_id(member_id)
         order = self.get_order_by_member_id(member_id)
-        order.add_order_item(NewMembership(new_membership_type))
+        order.add_order_item(NewMembership(new_membership_type, member=member))
 
     def gather_report(self, month, year):
         month_now = datetime.now().month
@@ -1276,6 +1279,7 @@ class Member(User):
     
     def get_confirmed_booking_today(self):
         today = date.today()
+        # today = booking.session.date
         for booking in self.__training_booking_list:
             if booking.status == "Confirmed" and booking.session.date == today:
                 return booking

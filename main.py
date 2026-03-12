@@ -32,7 +32,10 @@ def create_stuff():
     yoga_studio.create_lockers(10,4)
     multi_studio = gym.create_room("multi studio", 5)
     multi_studio.create_lockers(5,2)
-    
+
+    gaming_class = gym.create_class("gaming", "play e sport")
+    gaming_class.create_repeating_session(time(10,0,0),time(22,30,0),date(2026,11,3),7,10,5,multi_studio,gym_bro,gaming_class)
+
     yoga_class = gym.create_class("yoga", "stretchin dat bodae")
     yoga_class.create_repeating_session(time(10,0,0),time(11,30,0),date(2026,2,7),7,5,10,yoga_studio,gym_bro,yoga_class)
 
