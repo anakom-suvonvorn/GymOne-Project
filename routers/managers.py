@@ -1,6 +1,6 @@
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import Literal, Optional
 from datetime import datetime, date, time, timedelta
 
@@ -131,5 +131,100 @@ def add_trainer(request: AddTrainerRequest, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-# TODO: create class and session (which also assigns a room and trainer to it), show notifications > might not need to do this one
+class CreateClassRequest(BaseModel):
+    name: str
+    detail: str
 
+@router.post("/createclass", description="Create a new class") #############
+def create_class(request: CreateClassRequest, gym = Depends(get_gym)):
+    try:
+        new_class = gym.create_class(request.name, request.detail)
+        return {
+            "success": f"succesfully created a new class named: {new_class.name} with class_id: {new_class.class_id}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+class CreateClassSessionRequest(BaseModel):
+    class_id: str
+    room_id: str
+    start_time: time
+    end_time: time
+    session_date: date = Field(
+        description="is the date of the session for a singular session, or the start date of for a repeating session"
+    )
+    max_participants: int
+    staff_id: str = Field(
+        description="staff_id of a Trainer"
+    )
+    is_repeating: bool
+    days_interval: Optional[int] = None
+    times: Optional[int] = None
+
+    @model_validator(mode='after')
+    def validate_repeating_logic(self):
+        if self.is_repeating:
+            if self.days_interval is None or self.times is None:
+                raise ValueError("If 'is_repeating' is True, you must provide both 'days_interval' and 'times'.")
+        else:
+            if self.days_interval is not None or self.times is not None:
+                raise ValueError("If 'is_repeating' is False, 'days_interval' and 'times' should not be provided.")
+        return self
+
+@router.post("/createsession/class", description="Create a new session for a class") #############
+def create_session(request: CreateClassSessionRequest, gym = Depends(get_gym)):
+    try:
+        gym_class = gym.get_class_by_id(request.class_id)
+        room = gym.get_room_by_id(request.room_id)
+        staff = gym.get_staff_by_id(request.staff_id)
+        if request.is_repeating:
+            gym_class.create_repeating_session(request.start_time,request.end_time,request.session_date,request.days_interval,request.times,request.max_participants,room,staff)
+        else:
+            new_session = gym_class.create_session(request.start_time,request.end_time,request.session_date,request.max_participants,room,staff)
+        return {
+            "success": f"succesfully created a new session",
+            "session(s)_info": new_session.info if not request.is_repeating else gym_class.info
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+class CreateTrainerSessionRequest(BaseModel):
+    room_id: str
+    start_time: time
+    end_time: time
+    session_date: date = Field(
+        description="is the date of the session for a singular session, or the start date of for a repeating session"
+    )
+    max_participants: int
+    staff_id: str = Field(
+        description="staff_id of a Trainer"
+    )
+    is_repeating: bool
+    days_interval: Optional[int] = None
+    times: Optional[int] = None
+
+    @model_validator(mode='after')
+    def validate_repeating_logic(self):
+        if self.is_repeating:
+            if self.days_interval is None or self.times is None:
+                raise ValueError("If 'is_repeating' is True, you must provide both 'days_interval' and 'times'.")
+        else:
+            if self.days_interval is not None or self.times is not None:
+                raise ValueError("If 'is_repeating' is False, 'days_interval' and 'times' should not be provided.")
+        return self
+
+@router.post("/createsession/trainer", description="Create a new session for a trainer") #############
+def create_session(request: CreateTrainerSessionRequest, gym = Depends(get_gym)):
+    try:
+        room = gym.get_room_by_id(request.room_id)
+        staff = gym.get_staff_by_id(request.staff_id)
+        if request.is_repeating:
+            staff.create_repeating_session(request.start_time,request.end_time,request.session_date,request.days_interval,request.times,request.max_participants,room)
+        else:
+            new_session = staff.create_session(request.start_time,request.end_time,request.session_date,request.max_participants,room)
+        return {
+            "success": f"succesfully created a new session",
+            "session(s)_info": new_session.info if not request.is_repeating else staff.session_info
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

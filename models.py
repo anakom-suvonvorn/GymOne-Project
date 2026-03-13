@@ -158,7 +158,8 @@ class TrainingBooking(Booking):
         elif self.status == "Pending":
              text += "Pending. Please Pay to Confirm Booking"
         elif self.status == "Confirmed":
-            difference = self.__session.start - datetime.now()
+            now = datetime.now(self.__session.start.tzinfo)
+            difference = self.__session.start - now
             if difference < timedelta(0): 
                 text += "Already Passed"
             elif difference.total_seconds() / 3600 <= 2: 
@@ -341,6 +342,10 @@ class GymClass:
     @property
     def class_id(self):
         return self.__class_id
+
+    @property
+    def name(self):
+        return self.__name
     
     @property
     def info(self):
@@ -348,7 +353,9 @@ class GymClass:
         for session in self.session_list:
             # if isinstance(session, Session): pass
             participants = session.get_enrolled_num()
-            if session.start >= datetime.now() and participants < session.max_participants:
+            now = datetime.now(session.start.tzinfo)
+            
+            if session.start >= now and participants < session.max_participants:
                 sessions.append(session.info)
 
         return {
