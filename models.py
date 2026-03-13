@@ -143,6 +143,7 @@ class TrainingBooking(Booking):
         else:
             status_text = self.status
         return {
+            "member id" : self.member.member_id,
             "booking id" : self.booking_id,
             "session id" : self.__session.session_id,
             "Class date": self.__session.date,
@@ -283,6 +284,8 @@ class Session:
         return {
             "session id": self.session_id,
             "datetime": f"Start: {self.__start} End: {self.__end} Date: {self.__date}",
+            "room" : f"[{self.room.room_id}] {self.room.name}",
+            "training_plan" : self.__training_plan,
             "enrolled": self.get_enrolled_num(),
             "max participants": self.__max_participants
         }
@@ -682,9 +685,9 @@ class Gym:
         self.__payment_list = []
 
     @property
-    def payment(self):
-        return self.__payment_gateway
-    
+    def gym_class_list(self):
+        return self.__gym_class_list
+
     def create_payment_list(self):
         self.__payment_list = []
 
@@ -927,6 +930,14 @@ class Gym:
                 log_of_member_id = member_training_log.get(booking_member_id)
                 booking.set_training_log(f"General: {training_log} | Specific: {log_of_member_id if log_of_member_id else 'None'}")
                 booking.set_status("Completed")
+
+    def write_plan(self, training_plan, session_id=None, member_id=None):
+        if session_id:
+            session = self.get_session_by_id(session_id)
+            session.set_training_plan(training_plan)
+        else:
+            member = self.get_member_by_id(member_id)
+            member.set_training_plan(training_plan)
         
     def find_and_remove_item_from_order(self, item):
         for order in self.__order_list:
@@ -1222,7 +1233,7 @@ class User(ABC):
         self.__guest_date_list.append(date)
     
     @abstractmethod
-    def show_notifications(self):
+    def show_notifications(self, gym=None):
         pass
 
 class Member(User):
@@ -1324,7 +1335,7 @@ class Member(User):
                 return booking
         return None
 
-    def show_notifications(self):
+    def show_notifications(self, gym=None):
         train_booking_noti = []
         order_noti = []
         for training_booking in self.__training_booking_list:
@@ -1360,7 +1371,7 @@ class Guest(User):
     def guest_id(self):
         return self.__guest_id
 
-    def show_notifications(self):
+    def show_notifications(self, gym=None):
         return
 
 class Staff(User):
@@ -1453,7 +1464,7 @@ class Trainer(Staff):
     def write_training_plan(self, sched_or_mem: Session | Member, text):
         sched_or_mem.set_training_plan(text)
 
-    def show_notifications(self):
+    def show_notifications(self, gym=None):
         notifications = []
         now = date.today()
         limit = now + timedelta(hours=2)
@@ -1476,8 +1487,18 @@ class Receptionist(Staff):
         order = gym.get_order_by_id(order_id)
         order.process()
 
-    def show_notifications(self):
-        return super().show_notifications()
+    def show_notifications(self, gym = None):
+        today = date.today()
+        session_bookings = []
+        for gym_class in gym.gym_class_list:
+            # if isinstance(gym_class, GymClass): pass
+            for session in gym_class.session_list:
+                if session.date == today:
+                    session_bookings.append({
+                        "session_info" : session.info,
+                        "booking_list" : [training_booking.info for training_booking in session.training_booking_list]
+                    })
+        return session_bookings
 
 class Manager(Staff):
     def __init__(self, citizen_id, name, birth_date):
@@ -1499,7 +1520,7 @@ class Manager(Staff):
     def get_report(self, month, year):
         return self.__gym.gather_report(month, year)
     
-    def show_notifications(self):
+    def show_notifications(self, gym=None):
         return []
     
     def set_membership_status(self, member_id, status):
