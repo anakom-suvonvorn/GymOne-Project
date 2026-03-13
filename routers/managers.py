@@ -172,7 +172,7 @@ class CreateClassSessionRequest(BaseModel):
         return self
 
 @router.post("/createsession/class", description="Create a new session for a class") #############
-def create_session(request: CreateClassSessionRequest, gym = Depends(get_gym)):
+def create_class_session(request: CreateClassSessionRequest, gym = Depends(get_gym)):
     try:
         gym_class = gym.get_class_by_id(request.class_id)
         room = gym.get_room_by_id(request.room_id)
@@ -214,7 +214,7 @@ class CreateTrainerSessionRequest(BaseModel):
         return self
 
 @router.post("/createsession/trainer", description="Create a new session for a trainer") #############
-def create_session(request: CreateTrainerSessionRequest, gym = Depends(get_gym)):
+def create_trainer_session(request: CreateTrainerSessionRequest, gym = Depends(get_gym)):
     try:
         room = gym.get_room_by_id(request.room_id)
         staff = gym.get_staff_by_id(request.staff_id)
