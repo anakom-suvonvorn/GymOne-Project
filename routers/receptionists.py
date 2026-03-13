@@ -9,6 +9,17 @@ router = APIRouter(
     tags=["Receptionist"]
 )
 
+@router.get("/notifications/{staff_id}", description="Show notifications about the sessions/bookings that will be happening today") #############
+def show_notifications(staff_id: str, gym = Depends(get_gym)):
+    try:
+        staff = gym.get_staff_by_id(staff_id)
+        notifications = staff.show_notifications(gym)
+        return {
+            "notifications": notifications,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 class ApproveDayPassRequest(BaseModel):
     name: str
     citizen_id: str
@@ -168,5 +179,3 @@ def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
-# TODO: notification to show all the bookings of today that going to need to checkin / optional can specify date to see of that date, not today

@@ -1,6 +1,6 @@
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Literal, Optional
 
 router = APIRouter(
@@ -54,4 +54,27 @@ def record_session(request: RecordSessionRequest, gym = Depends(get_gym)) -> dic
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-# # TODO: write training/workout plan of session and member
+class WritePlanRequest(BaseModel):
+    training_plan: str
+    session_id: Optional[str] = None
+    member_id: Optional[str] = None
+
+    @model_validator(mode='after')
+    def check_mutually_exclusive(self):
+        if self.session_id and self.member_id:
+            raise ValueError("You must provide either 'session_id' or 'member_id', but not both.")
+        
+        if not self.session_id  and not self.member_id:
+            raise ValueError("You must provide exactly one: 'session_id' or 'member_id'.")
+
+        return self
+
+@router.post("/writeplan", description="Write a training/workout plan for a session or a member") ###########
+def write_plan(request: WritePlanRequest, gym = Depends(get_gym)) -> dict:
+    try:
+        gym.write_plan(request.training_plan, session_id=request.session_id, member_id=request.member_id)
+        return {
+            "success": f"succesfully wrote plan to {request.session_id if request.session_id else request.member_id}",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
