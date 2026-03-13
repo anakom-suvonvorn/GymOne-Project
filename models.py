@@ -183,6 +183,9 @@ class TrainingBooking(Booking):
         discount_price = round(price * (1 - discount), 2)
         return discount_price
     
+    def set_training_log(self, text):
+        self.__training_log = text
+    
     def set_paid(self, amount):
         room = self.__session.room
         new_locker_booking = room.reserve_locker("Normal", self.__member, self.__session.start, self.__session.end, "Confirmed")
@@ -731,7 +734,7 @@ class Gym:
         order = self.create_order(user)
         daypass = DayPass()          
         order.add_order_item(daypass)
-        return order
+        return order.order_id
 
     def create_product(self, name, amount, price):
         product = Product(name, amount, price)
@@ -857,9 +860,8 @@ class Gym:
                 return room
         raise Exception(f"Room '{room_id}' not found")
 
-    def check_room(self, room_id):
-        room = self.get_room_by_id(room_id)
-        return room.info
+    def get_room_info(self):
+            return [room.info for room in self.__room_list]
     
     def get_member_by_id(self, member_id):
         for user in self.__user_list:
@@ -914,6 +916,18 @@ class Gym:
             user.add_order(order)
         return order
     
+    def record_session(self, session_id, training_log, member_training_log):
+        session = self.get_session_by_id(session_id)
+        for booking in session.training_booking_list:
+            if isinstance(booking, TrainingBooking): pass
+            if booking.status == "Confirmed":
+                booking.set_status("No-show")
+            elif booking.status == "Check-in":
+                booking_member_id = booking.member.member_id
+                log_of_member_id = member_training_log.get(booking_member_id)
+                booking.set_training_log(f"General: {training_log} | Specific: {log_of_member_id if log_of_member_id else 'None'}")
+                booking.set_status("Completed")
+        
     def find_and_remove_item_from_order(self, item):
         for order in self.__order_list:
             if order.has_item(item):
@@ -933,6 +947,8 @@ class Gym:
 
     def enroll_member_by_id(self, member_id, session_id):
         member = self.get_member_by_id(member_id)
+        if member.member_status not in ["Active", "Pending"]:
+            raise Exception(f"Can't enroll. Currently status [{member.member_status}]")
         session = self.get_session_by_id(session_id)
         booking = session.enroll_member(member)
         order = self.get_order_by_member_id(member_id)
@@ -956,6 +972,7 @@ class Gym:
         if isinstance(booking, LockerBooking):
             booking.cancel()
             return {
+                "booking_id": booking.booking_id,
                 "cancelled": True,
                 "refund": 0.0,
                 "message": "Cancelled — no refund for locker bookings"
@@ -973,6 +990,7 @@ class Gym:
             booking.cancel()
             self.find_and_remove_item_from_order(booking)
             return {
+                "booking_id": booking.booking_id,
                 "cancelled": True,
                 "refund": 0.0,
                 "message": "Cancelled (Pending) — no refund, not yet paid"
@@ -986,6 +1004,7 @@ class Gym:
         if hours_until < 4 and not is_system:
             booking.cancel()
             return {
+            "booking_id": booking.booking_id,
             "cancelled": True,
             "refund": 0.0,
             "message": f"Cancelled — no refund ({hours_until:.1f} hrs notice, need >= 4)"
@@ -996,14 +1015,21 @@ class Gym:
         booking.cancel()
         booking.locker_booking.cancel()
         return {
+            "booking_id": booking.booking_id,
             "cancelled": True,
             "refund": refund_amount,
             }
     
     def cancel_session(self, session_id):
         session = self.get_session_by_id(session_id)
+        cancelled_booking_list = []
         for training_booking in session.training_booking_list:
-            self.cancel_booking(training_booking.booking_id, is_system=True)
+            cancelled_booking = self.cancel_booking(training_booking.booking_id, is_system=True)
+            cancelled_booking_list.append(cancelled_booking)
+        return {
+            "cancelled": True,
+            "cancelled bookings": cancelled_booking_list
+            }
 
     def pay_order_credit_card(self, card_num, cvv, expiry, order_id):
         order = self.get_order_by_id(order_id)
@@ -1233,6 +1259,7 @@ class Member(User):
     def locker_booking_list(self):
         return tuple(self.__locker_booking_list)
     
+    @property
     def member_status(self):
         return self.__status
 
@@ -1318,7 +1345,7 @@ class Member(User):
             "current_membership": self.__current_membership,
             "status": self.__status,
             "training_plan": self.__training_plan,
-            "training_history": [f"{training_booking.training_log} [{training_booking.session.date}]" for training_booking in self.__training_booking_list]
+            "training_history": [f"{training_booking.training_log} [{training_booking.session.session_id} {training_booking.session.date}]" for training_booking in self.__training_booking_list if training_booking.training_log]
         }
 
 class Guest(User):
@@ -1466,8 +1493,8 @@ class Manager(Staff):
     def remove_stock(self, product_id, amount):
         return self.__gym.remove_stock(product_id, amount)
     
-    def check_room(self, room_id):
-        return self.__gym.check_room(room_id)
+    def get_room_info(self):
+        return self.__gym.get_room_info()
 
     def get_report(self, month, year):
         return self.__gym.gather_report(month, year)

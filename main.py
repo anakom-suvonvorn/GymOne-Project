@@ -39,9 +39,6 @@ def create_stuff():
     gym_bro = gym.create_trainer("987654321", "Yabro Muscal", date(2000, 1, 1), "Junior", "muscle making")
     gym_bro.create_repeating_session(time(8,0,0),time(10,30,0),date(2026,4,15),7,3,1,private_room)
 
-    # create memberships
-    bob_membership = gym.create_member("123456789", "Bobda builder", date(2006, 1, 1), status="Active")
-
     # create classes and their sessions
     gaming_class = gym.create_class("gaming", "play e sport")
     gaming_class.create_repeating_session(time(10,0,0),time(22,30,0),date(2026,11,3),7,10,5,multi_studio,gym_bro)
@@ -52,6 +49,11 @@ def create_stuff():
     bike_class = gym.create_class("bike", "workin on our leggies")
     eve_bike_sched = bike_class.create_session(time(15,30,0),time(16,30,0),date.today(),3,multi_studio,gym_bro)
     night_bike_sched = bike_class.create_session(time(18,0,0),time(19,30,0),date.today(),5,multi_studio,gym_bro)
+
+    # create memberships
+    bob_membership = gym.create_member("123456789", "Bobda builder", date(2007, 8, 8), status="Active")
+    studa_membership = gym.create_member("498453155", "Studa Hardent", date(1998, 3, 28), membership="Student", status="Active")
+    richie_membership = gym.create_member("987456154", "Richie Guyant", date(2006, 10, 2), membership="Annual", status="Active")
 
     # misc
     gym_bro.write_training_plan(night_bike_sched, "we'll be biking for 30 km")

@@ -1,6 +1,6 @@
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
 router = APIRouter(
@@ -8,7 +8,7 @@ router = APIRouter(
     tags=["Trainer"]
 )
 
-@router.get("/notifications/{staff_id}", description="Show notifications for a specific staff")
+@router.get("/notifications/{staff_id}", description="Show notifications for a specific staff") #############
 def show_notifications(staff_id: str, gym = Depends(get_gym)):
     try:
         staff = gym.get_staff_by_id(staff_id)
@@ -35,15 +35,19 @@ def cancel_session(request: CancelSessionRequest, gym = Depends(get_gym)) -> dic
         raise HTTPException(status_code=400, detail=str(e))
     
 class RecordSessionRequest(BaseModel):
-    staff_id: str   
+    session_id: str
+    training_log: str = Field(
+        description="The general log or notes for the entire session."
+    )
+    member_training_log: dict[str, str] = Field(
+        default={}, 
+        description="A dictionary mapping specific member IDs to their individual training logs. Key must be the member_id (str), and Value must be their specific training_log (str)."
+    )
 
-@router.post("/recordsession", description="Record the details of a completed session, including class training log and private training logs")
+@router.post("/recordsession", description="Record the details of a completed session, including class training log and private training logs") #############
 def record_session(request: RecordSessionRequest, gym = Depends(get_gym)) -> dict:
     try:
-        session_id = request.session_id
-        training_log = request.training_log # is just a string > log of the whole sessions
-        member_training_log = request.member_training_log # is {member_id:training_log} > for specific member
-        gym.record_session(session_id, training_log, member_training_log)
+        gym.record_session(request.session_id, request.training_log, request.member_training_log)
         return {
             "success": f"succesfully recorded the session"
         }
