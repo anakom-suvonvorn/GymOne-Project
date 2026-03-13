@@ -11,38 +11,49 @@ from routers.managers import router as manager_router
 from database import gym
 
 def create_stuff():
-    # item stuff
-    gym.create_item("Energy drink", 50, 40)
-    gym.create_item("Water", 100, 15)
-    gym.create_item("Whey protein", 20, 1500)
+    # create products
+    gym.create_product("Energy drink", 50, 40)
+    gym.create_product("Water", 100, 15)
+    gym.create_product("Whey protein", 20, 1500)
+
+    # create rooms and their lockers
+    locker_room = gym.create_room("main locker room", 0)
+    locker_room.create_lockers(20,5)
 
     private_room = gym.create_room("a private room", 2)
     private_room.create_lockers(2,1)
 
-    gym_bro = gym.create_trainer("987654321", "Yabro Muscal", date(2000, 1, 1), "Junior", "muscle making")
-    gym_bro.create_repeating_session(time(8,0,0),time(10,30,0),date(2026,4,15),7,3,1,private_room)
-
-    manager_tyler = gym.create_manager("111111111", "Tyler", date(1990, 1, 1))
-
-    receptionist_alya = gym.create_receptionist("135792468", "Alya receptionist", date(1995, 1, 1))
-
-    bob_membership = gym.create_member("123456789", "Bobda builder", date(2006, 1, 1))
-
     yoga_studio = gym.create_room("yoga studio", 10)
     yoga_studio.create_lockers(10,4)
+
     multi_studio = gym.create_room("multi studio", 5)
     multi_studio.create_lockers(5,2)
 
+    # create managers
+    manager_tyler = gym.create_manager("111111111", "Tyler", date(1990, 1, 1))
+
+    # create receptionists
+    receptionist_alya = gym.create_receptionist("135792468", "Alya receptionist", date(1995, 1, 1))
+
+    # create trainers and their sessions
+    gym_bro = gym.create_trainer("987654321", "Yabro Muscal", date(2000, 1, 1), "Junior", "muscle making")
+    gym_bro.create_repeating_session(time(8,0,0),time(10,30,0),date(2026,4,15),7,3,1,private_room)
+
+    # create memberships
+    bob_membership = gym.create_member("123456789", "Bobda builder", date(2006, 1, 1), status="Active")
+
+    # create classes and their sessions
     gaming_class = gym.create_class("gaming", "play e sport")
-    gaming_class.create_repeating_session(time(10,0,0),time(22,30,0),date(2026,11,3),7,10,5,multi_studio,gym_bro,gaming_class)
+    gaming_class.create_repeating_session(time(10,0,0),time(22,30,0),date(2026,11,3),7,10,5,multi_studio,gym_bro)
 
     yoga_class = gym.create_class("yoga", "stretchin dat bodae")
-    yoga_class.create_repeating_session(time(10,0,0),time(11,30,0),date(2026,2,7),7,5,10,yoga_studio,gym_bro,yoga_class)
+    yoga_class.create_repeating_session(time(10,0,0),time(11,30,0),date(2026,2,7),7,5,10,yoga_studio,gym_bro)
 
     bike_class = gym.create_class("bike", "workin on our leggies")
-    eve_bike_sched = bike_class.create_session(time(15,30,0),time(16,30,0),date.today(),3,multi_studio,gym_bro,bike_class)
-    night_bike_sched = bike_class.create_session(time(18,0,0),time(19,30,0),date.today(),5,multi_studio,gym_bro,bike_class)
+    eve_bike_sched = bike_class.create_session(time(15,30,0),time(16,30,0),date.today(),3,multi_studio,gym_bro)
+    night_bike_sched = bike_class.create_session(time(18,0,0),time(19,30,0),date.today(),5,multi_studio,gym_bro)
 
+    # misc
     gym_bro.write_training_plan(night_bike_sched, "we'll be biking for 30 km")
     gym_bro.write_training_plan(bob_membership, "focus on training the lower leg area")
 
