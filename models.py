@@ -785,10 +785,12 @@ class Gym:
     def reserve_locker(self, member_id, is_vip, start, hours):
         member = self.get_member_by_id(member_id)
         locker_type = "VIP" if is_vip else "Normal"
-        end = start + timedelta(hours)
+        end = start + timedelta(hours=hours)
         for room in self.__room_list:
             try:
                 locker_booking = room.reserve_locker(locker_type, member, start, end, "Pending")
+                order = self.get_order_by_member_id(member_id)
+                order.add_order_item(locker_booking)
                 return locker_booking
             except:
                 continue

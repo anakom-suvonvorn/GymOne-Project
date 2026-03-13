@@ -47,7 +47,7 @@ def create_stuff():
     yoga_class.create_repeating_session(time(10,0,0),time(11,30,0),date(2026,2,7),7,5,10,yoga_studio,gym_bro)
 
     bike_class = gym.create_class("bike", "workin on our leggies")
-    eve_bike_sched = bike_class.create_session(time(15,30,0),time(16,30,0),date.today(),3,multi_studio,gym_bro)
+    eve_bike_sched = bike_class.create_session(time(15,30,0),time(16,30,0),date.today()+timedelta(days=1),3,multi_studio,gym_bro)
     night_bike_sched = bike_class.create_session(time(18,0,0),time(19,30,0),date.today(),5,multi_studio,gym_bro)
 
     # create memberships
@@ -55,7 +55,79 @@ def create_stuff():
     studa_membership = gym.create_member("498453155", "Studa Hardent", date(1998, 3, 28), membership="Student", status="Active")
     richie_membership = gym.create_member("987456154", "Richie Guyant", date(2006, 10, 2), membership="Annual", status="Active")
 
-    # misc
+    # simulate some transactions and stuff so have stuff to show in report
+
+    # 1. Enroll members in sessions (using the session ids from the classes you made)
+    gym.enroll_member_by_id(bob_membership.member_id, eve_bike_sched.session_id)
+    gym.enroll_member_by_id(studa_membership.member_id, night_bike_sched.session_id)
+    gym.enroll_member_by_id(richie_membership.member_id, eve_bike_sched.session_id)
+
+    # 2. Sell some products to members
+    # PRD-001 = Energy drink, PRD-002 = Water, PRD-003 = Whey protein
+    gym.sell_product("PRD-001", 2, bob_membership.member_id)
+    gym.sell_product("PRD-002", 1, studa_membership.member_id)
+    gym.sell_product("PRD-003", 1, richie_membership.member_id)
+    
+    # Sell product to a walk-in guest (no member_id)
+    guest_product_order = gym.sell_product("PRD-001", 3)
+
+    # 3. Approve a Daypass for a random guest
+    daypass_order_id = gym.approve_daypass("1100229933", "Randy Guestman", date(2003, 5, 12))
+
+    # 4. Reserve some lockers for members (e.g., Bob reserves a locker for 3 hours before his bike class)
+    gym.reserve_locker(bob_membership.member_id, is_vip=False, start=datetime.combine(date.today(), time(14,0,0)), hours=3)
+    gym.reserve_locker(richie_membership.member_id, is_vip=True, start=datetime.combine(date.today(), time(14,0,0)), hours=3)
+
+    # 5. Pay for all pending orders using Credit Card so they show up as revenue in reports
+    # We can iterate through the users/members to pay their pending orders
+    for user in [bob_membership, studa_membership, richie_membership]:
+        # Fetch the pending order for the member (assuming `get_pending_order` or similar exists, 
+        # or we just grab their current active order. In your models, Members usually have a current order)
+        try:
+            # We fetch the current active/pending order ID for the member via the gym's method
+            order = gym.get_order_by_member_id(user.member_id)
+            if order and order.status == "Pending":
+                gym.pay_order_credit_card(1234567890123456, 123, "12/26", order.order_id)
+        except Exception:
+            pass # Order might already be paid or not exist
+
+    # Pay for the guest's product order and daypass
+    try:
+        gym.pay_order_credit_card(9876543210987654, 321, "11/27", guest_product_order.order_id)
+        gym.pay_order_credit_card(1111222233334444, 999, "01/25", daypass_order_id)
+    except Exception:
+        pass
+
+    # 6. Simulate the trainer recording a training log for an enrolled session
+    # We'll write a log for Bob in the evening bike schedule
+    gym.record_session(
+        session_id=eve_bike_sched.session_id, 
+        training_log="Class completed successfully. High energy.", 
+        member_training_log={bob_membership.member_id: "Bob did great, pedaled 25km."}
+    )
+
+    # 7. Testing Apply New Member (Correctly creates NewMembership Order items)
+    new_monthly_id = gym.apply_new_member("Molly Monthly", "777777777", date(2002, 1, 1), "Monthly")
+    new_annual_id = gym.apply_new_member("Annie Annual", "888888888", date(1999, 5, 5), "Annual")
+    new_student_id = gym.apply_new_member("Stu Student", "999999999", date(2005, 9, 9), "Student")
+
+    # 8. Testing Change Membership
+    # Bob (who was directly created above without an order) now upgrades to Annual
+    gym.change_membership(bob_membership.member_id, "Annual")
+
+    # 9. Process Payments for Memberships
+    # Pay for the three brand new members
+    for new_id in [new_monthly_id, new_annual_id, new_student_id]:
+        # get_order_by_member_id will fetch the Pending order created by apply_new_member
+        order = gym.get_order_by_member_id(new_id)
+        if order and order.status == "Pending":
+            gym.pay_order_credit_card(1234567890123456, 123, "12/26", order.order_id)
+
+    # Pay Bob's new order for upgrading to Annual
+    bob_upgrade_order = gym.get_order_by_member_id(bob_membership.member_id)
+    if bob_upgrade_order and bob_upgrade_order.status == "Pending":
+        gym.pay_order_credit_card(1234567890123456, 123, "12/26", bob_upgrade_order.order_id)
+
     gym_bro.write_training_plan(night_bike_sched, "we'll be biking for 30 km")
     gym_bro.write_training_plan(bob_membership, "focus on training the lower leg area")
 
