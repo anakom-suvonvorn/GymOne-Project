@@ -8,17 +8,14 @@ router = APIRouter(
     tags=["Member"],
 )
 
-# NOTE: this whole file is just mainly for structure and knowing what to do
-# We can change the function call name or how it works inside or however we like it to be
-
-@router.get("/showclass", description="Show all available classes and their sessions that is not full and is not passed the session date yet") ########
+@router.get("/showclass", description="Show all available classes and their sessions that is not full and has not passed yet") ########
 def show_available_classes(gym = Depends(get_gym)):
     classes = gym.get_available_classes()
     return {
         "classes": classes,
     }
 
-@router.get("/showprivate", description="Show all available triners and their sessions that is not full and is not passed the session date yet") #########
+@router.get("/showprivate", description="Show all available trainers and their sessions that is not full and has not passed yet") #########
 def show_available_private_sessions(gym = Depends(get_gym)):
     private_sessions = gym.get_available_private_sessions()
     return {
@@ -95,7 +92,7 @@ def enroll_session(request: EnrollSessionRequest, gym = Depends(get_gym)) -> dic
 class CancelBookingRequest(BaseModel):
     booking_id: str
     
-@router.post("/cancelbooking", description="Cancels a TrainingBooking")
+@router.post("/cancelbooking", description="Cancels a TrainingBooking") ############
 def cancel_booking(request: CancelBookingRequest, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.cancel_booking(request.booking_id)
@@ -105,9 +102,6 @@ def cancel_booking(request: CancelBookingRequest, gym = Depends(get_gym)) -> dic
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
-# NOTE: a lot of the above function will result in something that is pending > can be paid/confirmed by paying
-# online payments (creditcard, qr)
 
 class PayOrderCreditCardRequest(BaseModel):
     order_id: str
@@ -115,7 +109,7 @@ class PayOrderCreditCardRequest(BaseModel):
     cvv: int
     expiry: str
 
-@router.post("/pay_order/creditcard", description="Pay for an order using a credit card [ONLINE]")
+@router.post("/pay_order/creditcard", description="Pay for an order using a credit card [ONLINE ACTION]") ############
 def pay_order_credit_card(request: PayOrderCreditCardRequest, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.pay_order_credit_card(request.card_num, request.cvv, request.expiry, request.order_id)
@@ -126,7 +120,7 @@ def pay_order_credit_card(request: PayOrderCreditCardRequest, gym = Depends(get_
 class PayOrderQR(BaseModel):
     order_id: str
 
-@router.post("/pay_order/qr", description="Create a qr code to pay [ONLINE]")
+@router.post("/pay_order/qr", description="Create a qr code to pay [ONLINE ACTION]") ############
 def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.pay_order_qr(request.order_id)
@@ -134,7 +128,7 @@ def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/pay_order/qr/validate", description="Check payment state of qr code [ONLINE]")
+@router.post("/pay_order/qr/validate", description="Check payment state of qr code [ONLINE ACTION]") ############
 def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.validate_pay_order_qr(request.order_id)

@@ -1,22 +1,20 @@
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
+from datetime import datetime, date, time, timedelta
 
 router = APIRouter(
     prefix="/receptionist",
     tags=["Receptionist"]
 )
 
-# NOTE: this whole file is just mainly for structure and knowing what to do
-# We can change the function call name or how it works inside or however we like it to be
-
 class ApproveDayPassRequest(BaseModel):
     name: str
     citizen_id: str
-    birth_date: str
+    birth_date: date
 
-@router.post("/approvedaypass", description="Approve a daypass application for member") ############
+@router.post("/approvedaypass", description="Approve a daypass application for member [ONSITE ACTION by receptionist: in person at reception]") ############
 def approve_daypass(request: ApproveDayPassRequest, gym = Depends(get_gym)) -> dict:
     try:
         name = request.name
@@ -33,11 +31,11 @@ def approve_daypass(request: ApproveDayPassRequest, gym = Depends(get_gym)) -> d
 class MemberCheckInRequest(BaseModel):
     member_id: str
 
-@router.post("/checkinmember", description="Check in a member when they arrive at the gym") ############
+@router.post("/checkinmember", description="Check in a member when they arrive at the gym [ONSITE ACTION by receptionist: in person at reception]") ############
 def check_in_member(request: MemberCheckInRequest, gym = Depends(get_gym)) -> dict:
     try:
         member_id = request.member_id
-        check_in = gym.member_check_in(member_id)
+        check_in = gym.check_in_member(member_id)
         return {
             "success": f"Daypass application approved and checked in for member_id: {member_id}",
             "check_in": check_in
@@ -48,10 +46,10 @@ def check_in_member(request: MemberCheckInRequest, gym = Depends(get_gym)) -> di
 class ApplyNewMemberRequest(BaseModel):
     name: str
     citizen_id: str
-    birth_date: str
-    membership_type: str
+    birth_date: date
+    membership_type: Literal["Monthly", "Annual", "Student"]
 
-@router.post("/applynewmember", description="Apply for a new membership") #############
+@router.post("/applynewmember", description="Apply for a new membership [ONSITE ACTION by receptionist: in person at reception]") #############
 def apply_new_member(request: ApplyNewMemberRequest, gym = Depends(get_gym)) -> dict:
     try:
         name = request.name
@@ -68,9 +66,9 @@ def apply_new_member(request: ApplyNewMemberRequest, gym = Depends(get_gym)) -> 
     
 class ChangeMembershipRequest(BaseModel):
     member_id: str
-    new_membership_type: str
+    new_membership_type: Literal["Monthly", "Annual", "Student"]
 
-@router.post("/changemembership", description="Change the membership type of a member") ###############
+@router.post("/changemembership", description="Change the membership type of a member [ONSITE ACTION by receptionist: in person at reception]") ###############
 def change_membership(request: ChangeMembershipRequest, gym = Depends(get_gym)) -> dict:
     try:
         member_id = request.member_id
@@ -82,18 +80,27 @@ def change_membership(request: ChangeMembershipRequest, gym = Depends(get_gym)) 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
+@router.get("/getstockinfo", description="Get the current stock of all products in the gym") ###########
+def get_stock_info(gym = Depends(get_gym)):
+    try:
+        stock = gym.get_stock_info()
+        return {
+            "stock": stock,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
 class SellProductRequest(BaseModel):
     product_id: str
     amount: int
+    member_id: str = None
 
-@router.post("/sellproduct", description="Sell a product to a customer") ###########
+@router.post("/sellproduct", description="Sell a product to a customer [ONSITE ACTION by receptionist: in person at reception]") ###########
 def sell_product(request: SellProductRequest, gym = Depends(get_gym)) -> dict:
     try:
-        product_id = request.product_id
-        amount = request.amount
-        gym.sell_product(product_id, amount)
+        gym.sell_product(request.product_id, request.amount, request.member_id)
         return {
-            "success": f"added product_id: {product_id} to order list"
+            "success": f"added product_id: {request.product_id} to order list"
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -101,13 +108,13 @@ def sell_product(request: SellProductRequest, gym = Depends(get_gym)) -> dict:
 class ReserveLockerRequest(BaseModel):
     member_id: str
     is_vip: bool
+    start: datetime = Field(default_factory=datetime.now)
+    hours: float = 2.0
 
-@router.post("/reservelocker", description="Reserve a locker for customer") ###########
+@router.post("/reservelocker", description="Reserve a locker for customer [ONSITE ACTION by receptionist: in person at reception]") ###########
 def reserve_locker(request: ReserveLockerRequest, gym = Depends(get_gym)) -> dict:
     try:
-        member_id = request.member_id
-        is_vip = request.is_vip
-        result = gym.reserve_locker(member_id, is_vip)
+        result = gym.reserve_locker(request.member_id, request.is_vip, request.start, request.hours)
         return {
             "success": f"added locker booking to order list."
         }
@@ -120,7 +127,7 @@ def reserve_locker(request: ReserveLockerRequest, gym = Depends(get_gym)) -> dic
 class PayOrderCashRequest(BaseModel):
     order_id: str
 
-@router.post("/payorder/cash", description="Pay for an order using cash [ONSITE: at reception]")
+@router.post("/payorder/cash", description="Pay for an order using cash [ONSITE ACTION by receptionist: in person at reception]") ###########
 def pay_order_cash(request: PayOrderCashRequest, gym = Depends(get_gym)) -> dict:
     try:
         order_id = request.order_id
@@ -135,7 +142,7 @@ class PayOrderCreditCardRequest(BaseModel):
     cvv: int
     expiry: str
 
-@router.post("/pay_order/creditcard", description="Pay for an order using a credit card [ONSITE: at reception]")
+@router.post("/pay_order/creditcard", description="Pay for an order using a credit card [ONSITE ACTION by receptionist: in person at reception]") ###########
 def pay_order_credit_card(request: PayOrderCreditCardRequest, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.pay_order_credit_card(request.card_num, request.cvv, request.expiry, request.order_id)
@@ -146,7 +153,7 @@ def pay_order_credit_card(request: PayOrderCreditCardRequest, gym = Depends(get_
 class PayOrderQR(BaseModel):
     order_id: str
 
-@router.post("/pay_order/qr", description="Create a qr code to pay [ONSITE: at reception]")
+@router.post("/pay_order/qr", description="Create a qr code to pay [ONSITE ACTION by receptionist: in person at reception]") ###########
 def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.pay_order_qr(request.order_id)
@@ -154,10 +161,12 @@ def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.post("/pay_order/qr/validate", description="Check payment state of qr code [ONSITE: at reception]")
+@router.post("/pay_order/qr/validate", description="Check payment state of qr code [ONSITE ACTION by receptionist: in person at reception]") ###########
 def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     try:
         result = gym.validate_pay_order_qr(request.order_id)
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+# TODO: notification to show all the bookings of today that going to need to checkin / optional can specify date

@@ -101,18 +101,15 @@ class Booking(OrderItem):
     @property
     def booking_id(self):
         return self.__booking_id
+    
+    def set_status(self, status):
+        self.__status = status
 
     def confirm(self):
         self.__status = "Confirmed"
 
     def cancel(self):
         self.__status = "Cancelled"
-
-    def check_in(self):
-        self.__status = "Check-in"
-
-    def late_check_in(self):
-        self.__status = "Late Check-in"
 
 class TrainingBooking(Booking):
 
@@ -201,6 +198,12 @@ class TrainingBooking(Booking):
         self.set_price_paid(amount)
         self.set_payment_status("Refunded")
 
+    def check_in(self):
+        self.set_status("Check-in")
+        
+    def late_check_in(self):
+        self.set_status("Late Check-in")
+
     def __str__(self):
         if self.status == "Pending":
             status_text = "Pending. Please Pay to Confirm Booking"
@@ -263,6 +266,10 @@ class Session:
     @property
     def status(self):
         return self.__status
+    
+    @property
+    def training_booking_list(self):
+        return tuple(self.__training_booking_list)
     
     @property
     def notification(self):
@@ -333,9 +340,9 @@ class GymClass:
     def info(self):
         sessions = []
         for session in self.session_list:
-            if isinstance(session, Session): pass
+            # if isinstance(session, Session): pass
             participants = session.get_enrolled_num()
-            if session.date >= date.today() and participants < session.max_participants:
+            if session.start >= datetime.now() and participants < session.max_participants:
                 sessions.append(session.info)
 
         return {
@@ -349,7 +356,8 @@ class GymClass:
     def session_list(self):
         return self.__session_list
     
-    def create_session(self, start, end, date, max_participants, room, trainer = None, gym_class = None):
+    # all session related functions are the exact same as trainer's, but got separated since can't "inherit" the same parent since it "is not a ..." for both of them
+    def create_session(self, start, end, date, max_participants, room, trainer = None):
         if not room.is_available(start, end, date):
             raise Exception("Session is overlapping another previous session")
         if not trainer and not isinstance(self, Trainer):
@@ -357,11 +365,15 @@ class GymClass:
         if not trainer: trainer = self
         if max_participants > room.max_people:
             raise Exception(f"Room can only accommodate {room.max_people} people")
+        if isinstance(self, GymClass):
+            gym_class = self
+        else:
+            gym_class = None
         session = Session(start, end, date, max_participants, room, trainer, gym_class)
         self.__session_list.append(session)
         return session
     
-    def create_repeating_session(self, start, end, start_date, days_interval, times, max_participants, room, trainer = None, gym_class = None):
+    def create_repeating_session(self, start, end, start_date, days_interval, times, max_participants, room, trainer = None):
         if not trainer and not isinstance(self, Trainer):
             raise Exception("Trainer not provided")
         if not trainer: trainer = self
@@ -372,13 +384,17 @@ class GymClass:
             if not room.is_available(start, end, date):
                 raise Exception("Session is overlapping another previous session")
             
+            if isinstance(self, GymClass):
+                gym_class = self
+            else:
+                gym_class = None
             session = Session(start, end, date, max_participants, room, trainer, gym_class)
             self.__session_list.append(session)
 
     def view_session(self):
         pass
 
-    def get_session_by_id(self, session_id):
+    def get_session_by_id(self, session_id) -> Session:
         for session in self.__session_list:
             if session.session_id == session_id:
                 return session
@@ -587,15 +603,15 @@ class Product:
     __next_id = 1
 
     def __init__(self, name, amount, price):
-        self.__item_id = f"PRD-{Product.__next_id:03d}"
+        self.__product_id = f"PRD-{Product.__next_id:03d}"
         Product.__next_id += 1
         self.__name = name
         self.__amount = amount
         self.__price = price
 
     @property
-    def item_id(self):
-        return self.__item_id
+    def product_id(self):
+        return self.__product_id
 
     @property
     def name(self):
@@ -644,6 +660,12 @@ class ProductAmount(OrderItem):
         self.__product.sell_stock(self.__amount)
         self.set_price_paid(amount)
         self.set_payment_status("Paid")
+
+    def set_refunded(self, amount):
+        return
+
+    def __str__(self):
+        return f"[product_id : {self.product.product_id}] Product: {self.__product.name} Amount: {self.__amount}"
     
 class Gym:
     def __init__(self, name, location):
@@ -651,7 +673,7 @@ class Gym:
         self.__location = location
         self.__user_list = []
         self.__room_list = []
-        self.__item_list = []
+        self.__product_list = []
         self.__gym_class_list = []
         self.__order_list = []
         self.__payment_list = []
@@ -677,8 +699,8 @@ class Gym:
         self.__gym_class_list.append(gym_class)
         return gym_class
 
-    def create_member(self, citizen_id, name, birth_date):
-        member = Member(citizen_id, name, birth_date)
+    def create_member(self, citizen_id, name, birth_date, membership="Monthly", status="Pending"):
+        member = Member(citizen_id, name, birth_date, membership, status=status)
         self.__user_list.append(member)
         return member
     
@@ -693,12 +715,6 @@ class Gym:
         order = self.create_order(member)
         order.add_order_item(NewMembership(membership_type, member=member))
         return member.member_id
-    
-    def change_memberhsip(self, member_id, new_membership_type):
-        member = self.get_member_by_id(member_id)
-        order = self.create_order(member)
-        order.add_order_item(NewMembership(new_membership_type, member=member))
-        return order
 
     def approve_daypass(self, citizen_id, name, birth_date):
         try:
@@ -716,36 +732,35 @@ class Gym:
         daypass = DayPass()          
         order.add_order_item(daypass)
         return order
-    
-    def member_check_in(self, member_id):
-        member = self.get_member_by_id(member_id)
-        member.check_in()
 
-    def create_item(self, name, amount, price):
-        item = Product(name, amount, price)
-        self.__item_list.append(item)
+    def create_product(self, name, amount, price):
+        product = Product(name, amount, price)
+        self.__product_list.append(product)
 
-    def sell_product(self, product_id, amount):
-        for item in self.__item_list:
-            if item.name == product_id:
-                item.sell_stock(amount)
-                order = self.create_order()
-                order.add_order_item(ProductAmount(item, amount))
+    def sell_product(self, product_id, amount, member_id = None):
+        for product in self.__product_list:
+            if product.product_id == product_id:
+                # product.sell_stock(amount) NOT YET, WAIT PAYMENT
+                if member_id:
+                    order = self.get_order_by_member_id(member_id)
+                else:
+                    order = self.create_order()
+                order.add_order_item(ProductAmount(product, amount))
                 return order
         raise Exception(f"Product '{product_id}' not found")
     
     def add_stock(self, product_id, amount):
-        for item in self.__item_list:
-            if item.item_id == product_id:
-                item.add_stock(amount)
-                return item.amount
+        for product in self.__product_list:
+            if product.product_id == product_id:
+                product.add_stock(amount)
+                return product.amount
         raise Exception(f"Product '{product_id}' not found")
 
     def remove_stock(self, product_id, amount):
-        for item in self.__item_list:
-            if item.item_id == product_id:
-                item.sell_stock(amount)
-                return item.amount
+        for product in self.__product_list:
+            if product.product_id == product_id:
+                product.sell_stock(amount)
+                return product.amount
         raise Exception(f"Product '{product_id}' not found")
 
     def get_manager_by_id(self, staff_id):
@@ -754,11 +769,10 @@ class Gym:
                 return user
         raise Exception("manager not found")
 
-    def reserve_locker(self, member_id, is_vip):
+    def reserve_locker(self, member_id, is_vip, start, hours):
         member = self.get_member_by_id(member_id)
         locker_type = "VIP" if is_vip else "Normal"
-        start = datetime.now()
-        end = start + timedelta(hours=2)  # default จองได้ 2 ชั่วโมง
+        end = start + timedelta(hours)
         for room in self.__room_list:
             try:
                 locker_booking = room.reserve_locker(locker_type, member, start, end, "Pending")
@@ -795,11 +809,11 @@ class Gym:
     
     def get_stock_info(self):
         stock_info = {}
-        for item in self.__item_list:
-            stock_info[item.name] = {
-                "ID": item.item_id,
-                "amount": item.amount,
-                "price": item.price
+        for product in self.__product_list:
+            stock_info[product.name] = {
+                "ID": product.product_id,
+                "amount": product.amount,
+                "price": product.price
             }
         return stock_info
     
@@ -819,13 +833,13 @@ class Gym:
         for gym_class in self.__gym_class_list:
             print(gym_class)
 
-    def get_class_by_id(self, class_id):
+    def get_class_by_id(self, class_id) -> GymClass:
         for gym_class in self.__gym_class_list:
             if gym_class.class_id == class_id:
                 return gym_class
         raise Exception("gym class not found")
     
-    def get_session_by_id(self, session_id):
+    def get_session_by_id(self, session_id) -> Session:
         for gym_class in self.__gym_class_list:
             session = gym_class.get_session_by_id(session_id)
             if session:
@@ -837,7 +851,7 @@ class Gym:
                     return session
         raise Exception("session not found")
     
-    def get_room_by_id(self, room_id):
+    def get_room_by_id(self, room_id) -> Room:
         for room in self.__room_list:
             if room.room_id == room_id:
                 return room
@@ -937,7 +951,7 @@ class Gym:
         refund_order.process()
         return refund_order
 
-    def cancel_booking(self, booking_id: str):
+    def cancel_booking(self, booking_id: str, is_system = False):
         booking = self.get_booking_by_id(booking_id)
         if isinstance(booking, LockerBooking):
             booking.cancel()
@@ -966,10 +980,10 @@ class Gym:
         
         hours_until = (booking.session.start - datetime.now()).total_seconds() / 3600
 
-        if hours_until <= 0:
+        if hours_until <= 0 and not is_system:
             raise Exception("Cannot cancel — session has already started")
 
-        if hours_until < 4:
+        if hours_until < 4 and not is_system:
             booking.cancel()
             return {
             "cancelled": True,
@@ -985,6 +999,11 @@ class Gym:
             "cancelled": True,
             "refund": refund_amount,
             }
+    
+    def cancel_session(self, session_id):
+        session = self.get_session_by_id(session_id)
+        for training_booking in session.training_booking_list:
+            self.cancel_booking(training_booking.booking_id, is_system=True)
 
     def pay_order_credit_card(self, card_num, cvv, expiry, order_id):
         order = self.get_order_by_id(order_id)
@@ -1183,13 +1202,13 @@ class User(ABC):
 class Member(User):
     __next_id = 1
 
-    def __init__(self, citizen_id, name, birth_date, current_membership = "Monthly", medical_history = "", goal = "", guest_date_list = []): #MEM-2023-001
+    def __init__(self, citizen_id, name, birth_date, membership = "Monthly", guest_date_list = [], status = "Pending"): #MEM-2023-001
         super().__init__(citizen_id, name, birth_date, guest_date_list=guest_date_list)
         self.__member_id = f"MEM-{Member.__next_id:03d}"
         Member.__next_id += 1
-        self.__current_membership = current_membership
+        self.__current_membership = membership
         self.__training_plan = ""
-        self.__status = "Pending"
+        self.__status = status
         self.__order_list = []
         self.__training_booking_list = []
         self.__locker_booking_list = []
@@ -1213,13 +1232,6 @@ class Member(User):
     @property
     def locker_booking_list(self):
         return tuple(self.__locker_booking_list)
-    
-    @property
-    def check_in(self):
-        booking = self.get_confirmed_booking_today()
-        if booking is None:
-            raise Exception("No confirmed booking found for today")
-        booking.check_in()
     
     def member_status(self):
         return self.__status
@@ -1286,10 +1298,18 @@ class Member(User):
         return None
 
     def show_notifications(self):
-        notifications = []
+        train_booking_noti = []
+        order_noti = []
         for training_booking in self.__training_booking_list:
-            notifications.append(training_booking.notification)
-        return notifications
+            train_booking_noti.append(training_booking.notification)
+        for order in self.__order_list:
+            order_noti.append(order.notification)
+
+        return {
+            "Training Booking" : train_booking_noti,
+            "Order" : order_noti,
+            "Member" : None if self.__status == "Active" else f"Currently is of status {self.__status}"
+        }
     
     def check_self_info(self):
         return {
@@ -1359,7 +1379,8 @@ class Trainer(Staff):
             "Sessions": sessions
         }
     
-    def create_session(self, start, end, date, max_participants, room, trainer = None, gym_class = None):
+    # all session related functions are the exact same as gymclass's, but got separated since can't "inherit" the same parent since it "is not a ..." for both of them
+    def create_session(self, start, end, date, max_participants, room, trainer = None):
         if not room.is_available(start, end, date):
             raise Exception("Session is overlapping another previous session")
         if not trainer and not isinstance(self, Trainer):
@@ -1367,11 +1388,15 @@ class Trainer(Staff):
         if not trainer: trainer = self
         if max_participants > room.max_people:
             raise Exception(f"Room can only accommodate {room.max_people} people")
+        if isinstance(self, GymClass):
+            gym_class = self
+        else:
+            gym_class = None
         session = Session(start, end, date, max_participants, room, trainer, gym_class)
         self.__session_list.append(session)
         return session
     
-    def create_repeating_session(self, start, end, start_date, days_interval, times, max_participants, room, trainer = None, gym_class = None):
+    def create_repeating_session(self, start, end, start_date, days_interval, times, max_participants, room, trainer = None):
         if not trainer and not isinstance(self, Trainer):
             raise Exception("Trainer not provided")
         if not trainer: trainer = self
@@ -1382,6 +1407,10 @@ class Trainer(Staff):
             if not room.is_available(start, end, date):
                 raise Exception("Session is overlapping another previous session")
             
+            if isinstance(self, GymClass):
+                gym_class = self
+            else:
+                gym_class = None
             session = Session(start, end, date, max_participants, room, trainer, gym_class)
             self.__session_list.append(session)
 
@@ -1393,8 +1422,11 @@ class Trainer(Staff):
             if session.session_id == session_id:
                 return session
         return False
-    
-    def get_notifications(self):
+
+    def write_training_plan(self, sched_or_mem: Session | Member, text):
+        sched_or_mem.set_training_plan(text)
+
+    def show_notifications(self):
         notifications = []
         now = date.today()
         limit = now + timedelta(hours=2)
@@ -1402,12 +1434,6 @@ class Trainer(Staff):
             if limit >= session.date >= now:
                 notifications.append(session.notification)
         return notifications
-
-    def write_training_plan(self, sched_or_mem: Session | Member, text):
-        sched_or_mem.set_training_plan(text)
-
-    def show_notifications(self):
-        return super().show_notifications()
     
 class Receptionist(Staff):
     def __init__(self, citizen_id, name, birth_date): #MEM-2023-001
@@ -1416,8 +1442,8 @@ class Receptionist(Staff):
     def approve_day_pass(self, gym, member_id):
         gym.approve_day_pass(member_id)
 
-    def create_member(self, gym, citizen_id, name, birth_date):
-        return gym.create_member(citizen_id, name, birth_date)
+    def create_member(self, gym, citizen_id, name, birth_date, membership):
+        return gym.create_member(citizen_id, name, birth_date, membership, status="Pending")
     
     def process_payment(self, gym, order_id):
         order = gym.get_order_by_id(order_id)
@@ -1527,6 +1553,15 @@ class AbstractOrder(ABC):
             "total": self.__payment.amount if self.__status == "Paid" else self.total_price,
             "order_items": [order_item.item_info(self.__user) for order_item in self.__order_item_list]
         }
+    
+    @property
+    def notification(self):
+        text = f"[order_id: {self.__order_id}] : "
+        if self.__status == "Pending":
+            text += "Waiting on payment"
+        else:
+            text += f"is {self.__status}"
+        return text
 
     def has_item(self, order_item_find):
         for order_item in self.__order_item_list:
