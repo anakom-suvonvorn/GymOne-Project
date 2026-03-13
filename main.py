@@ -130,32 +130,7 @@ def create_stuff():
 
     gym_bro.write_training_plan(night_bike_sched, "we'll be biking for 30 km")
     gym_bro.write_training_plan(bob_membership, "focus on training the lower leg area")
-
-def run_test(gym: Gym, gym_bro: Trainer, manager_tyler, receptionist_alya, bob_membership: Member):
-    gym.print_available_classes() # to see and choose what to enroll in
-
-    session_id = input("Enter session id to enroll into: ")
-    member_id = input("Enter member_id: ")
-
-    # citizen_id = input("Enter citizen_id: ")
-    # user = gym.get_user_by_citizen_id(citizen_id)
-
-    # both works
-    gym.enroll_member_by_id(member_id, session_id)
-    # gym.enroll_member(user, session_id)
-    # bob_membership.enroll_session(gym, session_id)
-
-    pprint.pprint(bob_membership.get_current_bookings(), indent=4)
-    bob_membership.print_orders()
-    # print(bob_membership.get_pending_bookings())
-
-    gym.pay_card(bob_membership)
-    # gym.payment.pay_booking(bob_membership)
-
-    pprint.pprint(bob_membership.get_current_bookings(), indent=4)
-    bob_membership.print_orders()
-
-
+    
 def run_api():
     app = FastAPI()
 
@@ -175,5 +150,4 @@ def run_api():
 
 if __name__ == "__main__":
     create_stuff()
-    # run_test()
     run_api()
