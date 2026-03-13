@@ -1,9 +1,8 @@
-from logging import Manager
-
 from fastapi import  APIRouter, Depends, HTTPException
 from database import get_gym
 from pydantic import BaseModel
 from typing import Literal, Optional
+from datetime import datetime, date, time, timedelta
 
 router = APIRouter(
     prefix="/manager",
@@ -20,18 +19,18 @@ def get_report(month: int, year: int, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/checkroom/{room_id}",description = "Manager checks room info by room_id (e.g. R-001). Requires staff_id as query parameter")
-def check_room(room_id: str, staff_id: str, gym = Depends(get_gym)):
+@router.get("/getroominfo",description = "Manager gets info of all the rooms. Requires staff_id as query parameter") #############
+def get_room_info(staff_id: str, gym = Depends(get_gym)):
     try:
         manager = gym.get_manager_by_id(staff_id)
-        result = manager.check_room(room_id)
+        result = manager.get_room_info()
         return {
             "result": result,
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/getstockinfo", description="Get the current stock of all products in the gym")
+@router.get("/getstockinfo", description="Get the current stock of all products in the gym") #############
 def get_stock_info(gym = Depends(get_gym)):
     try:
         stock = gym.get_stock_info()
@@ -41,7 +40,7 @@ def get_stock_info(gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/getstaffinfo", description="Get info of all staff in the gym")
+@router.get("/getstaffinfo", description="Get info of all staff in the gym") #############
 def get_staff_info(gym = Depends(get_gym)):
     try:
         staff = gym.get_staff_info()
@@ -81,9 +80,9 @@ def remove_stock(request: StockRequest, gym = Depends(get_gym)) -> dict:
 class SetMemberStatusRequest(BaseModel):
     staff_id: str
     member_id: str
-    status: str
+    status: Literal["Active", "Suspended", "Frozen", "Expired"]
     
-@router.post("/setmemberstatus", description="Manager sets member status. Valid statuses Active, Suspended, Frozen, Expired require member_id, staff_id, status")
+@router.post("/setmemberstatus", description="Manager sets member status. Require member_id, staff_id, status") #############
 def set_member_status(request: SetMemberStatusRequest, gym = Depends(get_gym)) -> dict:
     try:
         manager = gym.get_manager_by_id(request.staff_id)
@@ -95,9 +94,9 @@ def set_member_status(request: SetMemberStatusRequest, gym = Depends(get_gym)) -
 class AddReceptionistRequest(BaseModel):
     citizen_id: str
     name: str
-    birth_date: str
+    birth_date: date
 
-@router.post("/addreceptionist", description="Add a receptionist to the gym")
+@router.post("/addreceptionist", description="Add a receptionist to the gym") #############
 def add_receptionist(request: AddReceptionistRequest, gym = Depends(get_gym)):
     try:
         citizen_id = request.citizen_id
@@ -113,11 +112,11 @@ def add_receptionist(request: AddReceptionistRequest, gym = Depends(get_gym)):
 class AddTrainerRequest(BaseModel):
     citizen_id: str
     name: str
-    birth_date: str
-    tier: int
+    birth_date: date
+    tier: Literal["Junior", "Senior", "Master"]
     specialization: str
 
-@router.post("/addtrainer", description="Add a trainer to the gym")
+@router.post("/addtrainer", description="Add a trainer to the gym") #############
 def add_trainer(request: AddTrainerRequest, gym = Depends(get_gym)):
     try:
         citizen_id = request.citizen_id
@@ -132,5 +131,5 @@ def add_trainer(request: AddTrainerRequest, gym = Depends(get_gym)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-# TODO: create class and session (which also assigns a room and trainer to it), show notifications
+# TODO: create class and session (which also assigns a room and trainer to it), show notifications > might not need to do this one
 

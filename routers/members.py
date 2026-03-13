@@ -53,6 +53,16 @@ def show_current_orders(member_id: str, gym = Depends(get_gym)):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+@router.get("/showspecificorder/{order_id}", description="Show order of the order_id") ##########
+def show_specific_order(order_id: str, gym = Depends(get_gym)):
+    try:
+        order = gym.get_order_by_id(order_id)
+        return {
+            "order": order.info
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/checkselfinfo/{member_id}", description="Show information about the specific member") ##########
 def check_self_info(member_id: str, gym = Depends(get_gym)):

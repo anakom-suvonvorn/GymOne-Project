@@ -20,10 +20,10 @@ def approve_daypass(request: ApproveDayPassRequest, gym = Depends(get_gym)) -> d
         name = request.name
         citizen_id = request.citizen_id
         birth_date = request.birth_date
-        member_id = gym.approve_daypass(name, citizen_id, birth_date) # NOTE: in reality this is like giving the receptionist your card in exchange for the gym card
+        order_id = gym.approve_daypass(name, citizen_id, birth_date) # NOTE: in reality this is like giving the receptionist your card in exchange for the gym card
         return {
             "success": f"Daypass for {name} has been approved. Please pay to receive your daypass",
-            "member_id": member_id
+            "order_id": order_id
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -31,13 +31,13 @@ def approve_daypass(request: ApproveDayPassRequest, gym = Depends(get_gym)) -> d
 class MemberCheckInRequest(BaseModel):
     member_id: str
 
-@router.post("/checkinmember", description="Check in a member when they arrive at the gym [ONSITE ACTION by receptionist: in person at reception]") ############
+@router.post("/checkinmember", description="Check in a member for a session they enrolled in, when they arrive at the gym [ONSITE ACTION by receptionist: in person at reception]") ############
 def check_in_member(request: MemberCheckInRequest, gym = Depends(get_gym)) -> dict:
     try:
         member_id = request.member_id
         check_in = gym.check_in_member(member_id)
         return {
-            "success": f"Daypass application approved and checked in for member_id: {member_id}",
+            "success": f"Checked in for member_id: {member_id}",
             "check_in": check_in
         }
     except Exception as e:
@@ -169,4 +169,4 @@ def pay_order_qr(request: PayOrderQR, gym = Depends(get_gym)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-# TODO: notification to show all the bookings of today that going to need to checkin / optional can specify date
+# TODO: notification to show all the bookings of today that going to need to checkin / optional can specify date to see of that date, not today
