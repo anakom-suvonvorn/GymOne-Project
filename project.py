@@ -1017,6 +1017,7 @@ class Gym:
             raise Exception("Cannot cancel — session has already started")
         elif hours_until < 4 and not is_system:
             booking.cancel()
+            booking.locker_booking.cancel()
             return {
                 "booking_id": booking.booking_id,
                 "cancelled": True,
