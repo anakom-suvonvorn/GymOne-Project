@@ -3,7 +3,7 @@ import uvicorn, pprint
 from fastapi import FastAPI, HTTPException, APIRouter
 from fastapi_mcp import FastApiMCP
 
-from models import Gym, Member, Trainer
+from project import Gym, Member, Trainer
 from routers.members import router as member_router
 from routers.trainers import router as trainer_router
 from routers.receptionists import router as receptionist_router

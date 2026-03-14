@@ -960,10 +960,6 @@ class Gym:
             if order.has_item(item):
                 return order
         raise Exception("item doesn't exist")
-    
-    # def enroll_member(self, member, session_id):
-    #     session = self.get_session_by_id(session_id)
-    #     session.enroll_member(member)
 
     def enroll_member_by_id(self, member_id, session_id):
         member = self.get_member_by_id(member_id)
@@ -989,7 +985,10 @@ class Gym:
 
     def cancel_booking(self, booking_id: str, is_system = False):
         booking = self.get_booking_by_id(booking_id)
-        if isinstance(booking, LockerBooking):
+
+        if booking is None:
+            raise Exception("Booking not found")
+        elif isinstance(booking, LockerBooking):
             booking.cancel()
             return {
                 "booking_id": booking.booking_id,
@@ -997,16 +996,12 @@ class Gym:
                 "refund": 0.0,
                 "message": "Cancelled — no refund for locker bookings"
             }
-
-        if booking is None:
-            raise Exception("Booking not found")
         
         status = booking.status
-
+        
         if status in ("Cancelled", "Completed"):
             raise Exception(f"Cannot cancel — current status: {status}")
-        
-        if status == "Pending":
+        elif status == "Pending":
             booking.cancel()
             self.find_and_remove_item_from_order(booking)
             return {
@@ -1020,25 +1015,24 @@ class Gym:
 
         if hours_until <= 0 and not is_system:
             raise Exception("Cannot cancel — session has already started")
-
-        if hours_until < 4 and not is_system:
+        elif hours_until < 4 and not is_system:
             booking.cancel()
             return {
-            "booking_id": booking.booking_id,
-            "cancelled": True,
-            "refund": 0.0,
-            "message": f"Cancelled — no refund ({hours_until:.1f} hrs notice, need >= 4)"
+                "booking_id": booking.booking_id,
+                "cancelled": True,
+                "refund": 0.0,
+                "message": f"Cancelled — no refund ({hours_until:.1f} hrs notice, need >= 4)"
             }
-        
-        self.refund_booking(booking)
-        refund_amount = booking.price_paid
-        booking.cancel()
-        booking.locker_booking.cancel()
-        return {
-            "booking_id": booking.booking_id,
-            "cancelled": True,
-            "refund": refund_amount,
-            }
+        else:
+            self.refund_booking(booking)
+            refund_amount = booking.price_paid
+            booking.cancel()
+            booking.locker_booking.cancel()
+            return {
+                "booking_id": booking.booking_id,
+                "cancelled": True,
+                "refund": refund_amount,
+                }
     
     def cancel_session(self, session_id):
         session = self.get_session_by_id(session_id)

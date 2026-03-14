@@ -1,4 +1,4 @@
-from models import Gym
+from project import Gym
 
 gym = Gym("my gym", "1/45 bangkok thailand")
 

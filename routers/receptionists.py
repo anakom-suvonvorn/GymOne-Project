@@ -138,7 +138,7 @@ def reserve_locker(request: ReserveLockerRequest, gym = Depends(get_gym)) -> dic
 class PayOrderCashRequest(BaseModel):
     order_id: str
 
-@router.post("/payorder/cash", description="Pay for an order using cash [ONSITE ACTION by receptionist: in person at reception]") ###########
+@router.post("/pay_order/cash", description="Pay for an order using cash [ONSITE ACTION by receptionist: in person at reception]") ###########
 def pay_order_cash(request: PayOrderCashRequest, gym = Depends(get_gym)) -> dict:
     try:
         order_id = request.order_id
