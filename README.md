@@ -6,7 +6,7 @@ with `pyproject.toml` present in the directory
 do `uv sync`
 to install all needed dependencies
 then run the code by doing
-``
+`uv run main.py`
 
 # GitHub Link
 https://github.com/anakom-suvonvorn/GymOne-Project

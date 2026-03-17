@@ -2,3 +2,4 @@ uv.lock
 .vscode/
 __pycache__/
 routers/__pycache__/
+.vscode
